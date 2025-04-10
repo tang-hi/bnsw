@@ -94,3 +94,6 @@ public:
 private:
   static DistFunc distance_function;
 };
+
+template <typename T>
+typename L2Distance<T>::DistFunc L2Distance<T>::distance_function = nullptr;
