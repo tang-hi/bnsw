@@ -9,22 +9,36 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Try to find Eigen3 in standard locations
 set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} "/usr/include/eigen3" "/usr/local/include/eigen3")
 
+# Detect host architecture and set appropriate compiler flags
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "amd64|x86_64")
+  set(ARCH_FLAGS "-mavx2")
+  message(STATUS "Detected x86_64 architecture, enabling AVX2 instructions")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+  set(ARCH_FLAGS "-march=native")
+  message(STATUS "Detected ARM64 architecture, enabling native optimizations")
+else()
+  set(ARCH_FLAGS "-march=native")
+  message(STATUS "Unknown architecture: ${CMAKE_SYSTEM_PROCESSOR}, using generic optimizations")
+endif()
+
 # Use Conan-generated paths if available
 find_package(spdlog REQUIRED)
 
 find_package(Eigen3 REQUIRED)
 find_package(Catch2 REQUIRED)
+find_package(fmt REQUIRED)
 
 add_executable(utils_test test/utils_test.cpp)
 target_link_libraries(utils_test Catch2::Catch2WithMain Eigen3::Eigen)
 target_include_directories(utils_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(utils_test PRIVATE -Wall -Wextra -Wpedantic -Werror ${ARCH_FLAGS}  -g)
 
 add_executable(l2_distance_test test/dist_alg/l2_distance_test.cpp)
 target_link_libraries(l2_distance_test Catch2::Catch2WithMain Eigen3::Eigen)
 target_include_directories(l2_distance_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_options(l2_distance_test PRIVATE -Wall -Wextra -Wpedantic -Werror -mavx2 -march=native)
+target_compile_options(l2_distance_test PRIVATE -Wall -Wextra -Wpedantic -Werror ${ARCH_FLAGS} -g)
 
 add_executable(adsampling_test test/adsampling_test.cpp)
 target_link_libraries(adsampling_test Catch2::Catch2WithMain Eigen3::Eigen)
 target_include_directories(adsampling_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_options(adsampling_test PRIVATE -Wall -Wextra -Wpedantic -Werror -mavx2 -march=native)
+target_compile_options(adsampling_test PRIVATE -Wall -Wextra -Wpedantic -Werror ${ARCH_FLAGS} -g)

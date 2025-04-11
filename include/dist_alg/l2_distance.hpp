@@ -1,23 +1,22 @@
 #pragma once
 
-#include <cmath>
 #include <cstddef>
 
 template <typename T>
-T L2DistanceNaive(const T *a, const T *b, std::size_t dim) {
+T L2SqrDistanceNaive(const T *a, const T *b, std::size_t dim) {
   T sum = 0;
   for (std::size_t i = 0; i < dim; ++i) {
     T diff = a[i] - b[i];
     sum += diff * diff;
   }
-  return std::sqrt(sum);
+  return sum;
 }
 
 #ifdef __aarch64__
 
 #include <arm_neon.h>
 template <typename T>
-T L2DistanceNeon(const T *a, const T *b, std::size_t dim) {
+T L2SqrDistanceNeon(const T *a, const T *b, std::size_t dim) {
   float32x4_t sum_vec = vdupq_n_f32(0.0f);
   std::size_t i = 0;
   for (; i + 4 < dim; i += 4) {
@@ -38,7 +37,7 @@ T L2DistanceNeon(const T *a, const T *b, std::size_t dim) {
     sum += diff * diff;
   }
 
-  return std::sqrt(sum);
+  return sum;
 }
 
 #endif // __aarch64__
@@ -46,7 +45,7 @@ T L2DistanceNeon(const T *a, const T *b, std::size_t dim) {
 #ifdef __x86_64__
 #include <immintrin.h>
 template <typename T>
-T L2DistanceAVX2(const T *a, const T *b, std::size_t dim) {
+T L2SqrDistanceAVX2(const T *a, const T *b, std::size_t dim) {
   __m256 sum_vec = _mm256_setzero_ps();
   std::size_t i = 0;
   for (; i + 8 < dim; i += 8) {
@@ -67,7 +66,7 @@ T L2DistanceAVX2(const T *a, const T *b, std::size_t dim) {
     sum += diff * diff;
   }
 
-  return std::sqrt(sum);
+  return sum;
 }
 
 #endif
@@ -79,11 +78,11 @@ public:
   // Do runtime dispatching to select the best implementation
   L2Distance() {
 #ifdef __aarch64__
-    distance_function = L2DistanceNeon<T>;
+    distance_function = L2SqrDistanceNeon<T>;
 #elif defined(__x86_64__)
-    distance_function = L2DistanceAVX2<T>;
+    distance_function = L2SqrDistanceAVX2<T>;
 #else
-    distance_function = L2DistanceNaive<T>;
+    distance_function = L2SqrDistanceNaive<T>;
 #endif
   }
 
