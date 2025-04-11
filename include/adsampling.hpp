@@ -28,14 +28,14 @@ public:
     Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>> vec(ptr, dimension);
     Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>> result(
         ptr, dimension); // Reuse the same memory
-    result = orthogonal_matrix * vec;
+    result = vec * orthogonal_matrix;
     return;
   }
 
   bool above_threshold(const T *a, const T *b, float threshold) {
     float estimate = 0.0f;
 
-    for (size_t i = 0; i < dimension / batch; ++i) {
+    for (int i = 0; i < dimension / batch; ++i) {
       const auto *a_ptr = a + i * batch;
       const auto *b_ptr = b + i * batch;
       estimate += distance_algorithm.distance(a_ptr, b_ptr, batch);

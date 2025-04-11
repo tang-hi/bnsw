@@ -23,3 +23,8 @@ add_executable(l2_distance_test test/dist_alg/l2_distance_test.cpp)
 target_link_libraries(l2_distance_test Catch2::Catch2WithMain Eigen3::Eigen)
 target_include_directories(l2_distance_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(l2_distance_test PRIVATE -Wall -Wextra -Wpedantic -Werror -mavx2 -march=native)
+
+add_executable(adsampling_test test/adsampling_test.cpp)
+target_link_libraries(adsampling_test Catch2::Catch2WithMain Eigen3::Eigen)
+target_include_directories(adsampling_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(adsampling_test PRIVATE -Wall -Wextra -Wpedantic -Werror -mavx2 -march=native)

@@ -1,9 +1,11 @@
+#include "adsampling.hpp"
 #include "catch2/catch_test_macros.hpp"
 #include "dist_alg/l2_distance.hpp"
 #include "utils.hpp"
 #include <algorithm>
 #include <queue>
 #include <random>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -57,6 +59,38 @@ TEST_CASE("AdSampling Test", "[predict]") {
       pq;
 
   auto threshold = 0.0f;
+  bnsw::AdSampling<float> adsampling(dim);
   for (auto i = 0U; i < data.size(); ++i) {
+    if (pq.size() < 100) {
+      pq.push(
+          {l2_distance.distance(transformed_query.data(), data[i].data(), dim),
+           i});
+    } else {
+      threshold = pq.top().first;
+      if (!adsampling.above_threshold(transformed_query.data(), data[i].data(),
+                                      threshold)) {
+        pq.pop();
+        pq.push({l2_distance.distance(transformed_query.data(), data[i].data(),
+                                      dim),
+                 i});
+      }
+    }
   }
+
+  std::vector<int> candidates;
+  std::unordered_set<int> gt;
+  for (int i = 0; i < 100; i++) {
+    auto &top = pq.top();
+    candidates.push_back(top.second);
+    gt.insert(ranked_results[i].second);
+  }
+
+  int valid = 0;
+  for (int i = 0; i < 100; i++) {
+    if (gt.count(candidates[i]) != 0) {
+      valid += 1;
+    }
+  }
+
+  REQUIRE(static_cast<float>(valid) / 100 > 0.8);
 }
