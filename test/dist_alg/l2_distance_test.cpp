@@ -29,7 +29,6 @@ TEST_CASE("L2 Distance Calculation", "unaligned") {
     b[i] = distribution(generator);
     L2 += (a[i] - b[i]) * (a[i] - b[i]);
   }
-  L2 = std::sqrt(L2);
 
   L2Distance<float> l2_distance;
   using Catch::Matchers::WithinRel;

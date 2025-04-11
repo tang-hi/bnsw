@@ -4,7 +4,6 @@
 #include "dist_alg/l2_distance.hpp"
 #include "utils.hpp"
 #include <cmath>
-#include <cstddef>
 #include <type_traits>
 namespace bnsw {
 
@@ -17,7 +16,7 @@ class AdSampling {
 
 public:
   explicit AdSampling(int dimension)
-      : orthogonal_matrix(createOrthogonal(dimension)) {}
+      : dimension(dimension), orthogonal_matrix(createOrthogonal(dimension)) {}
 
   float distance(const T *a, const T *b) {
     return distance_algorithm.distance(a, b, dimension);
@@ -32,29 +31,33 @@ public:
     return;
   }
 
-  bool above_threshold(const T *a, const T *b, float threshold) {
-    float estimate = 0.0f;
-
+  bool above_threshold(const T *a, const T *b, float threshold,
+                       float &estimate) {
+    estimate = 0.0f;
     for (int i = 0; i < dimension / batch; ++i) {
       const auto *a_ptr = a + i * batch;
       const auto *b_ptr = b + i * batch;
       estimate += distance_algorithm.distance(a_ptr, b_ptr, batch);
-
-      double ratio = (1.0 * i / dimension) *
-                     (1.0 + eps0 / std::sqrt(i * batch)) *
-                     (1.0 + eps0 / std::sqrt(i * batch));
-      if (estimate > threshold * ratio) {
+      auto current_dimension = (i + 1) * batch;
+      double r = (1.0 * current_dimension / dimension) *
+                 (1.0 + eps0 / std::sqrt(current_dimension)) *
+                 (1.0 + eps0 / std::sqrt(current_dimension));
+      if (current_dimension < dimension && estimate > threshold * r) {
+        early_stop_count += 1;
+        estimate = estimate * dimension / current_dimension;
         return true;
       }
     }
     return estimate > threshold;
   }
 
+public:
+  int early_stop_count{0};
+
 private:
   int dimension{0};
   Eigen::MatrixXf orthogonal_matrix;
   DistanceAlgorithm<T> distance_algorithm;
-
   constexpr static const int batch = 8;
   constexpr static const double eps0 = 2.1;
 };
