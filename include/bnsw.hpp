@@ -4,28 +4,32 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <limits>
-#include <memory>
-#include <mutex>
 #include <queue>
 #include <random>
 #include <stdexcept>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace bnsw {
 
+struct BnswTestAccessor;
+
 template <typename T, template <typename U> class DistanceAlgorithm,
           template <typename V,
                     template <typename> typename> class SamplingAlgorithm =
               AdSampling>
 class bnsw {
+  friend struct BnswTestAccessor;
   using id_t = std::uint32_t;
   using label_t = std::uint32_t;
 
   static constexpr id_t INVALID_ID = std::numeric_limits<id_t>::max();
 
+public:
   struct InternalNode {
     int level;
     const T *point_data;
@@ -66,8 +70,10 @@ public:
       : dimension_(dimension), M_(M), M_max_(M), M_max0_(M * 2),
         ef_construction_(ef_construction), ef_search_(ef_search),
         level_generator_(random_seed), entry_point_(INVALID_ID), max_level_(-1),
-        dist_algo_(dimension), sampler_(dimension),
-        mult_(1.0 / std::log(1.0 * M)) {
+        mult_(1.0 / std::log(1.0 * M)), sampler_(dimension) {
+
+    static_assert(std::is_default_constructible_v<DistanceAlgorithm<T>>,
+                  "DistanceAlgorithm must be default constructible");
     if (M == 0)
       throw std::invalid_argument("M cannot be 0");
     if (ef_construction == 0)
@@ -76,83 +82,65 @@ public:
 
   ~bnsw() = default;
 
-  void addPoint(const void *point, label_t label) {
-    const T *point_typed = static_cast<const T *>(point);
+  bool addPoint(const void *point, label_t label, int level) {
+    const T *point_data = static_cast<const T *>(point);
     id_t current_id;
     int current_level;
 
     if (label_to_id_.count(label)) {
-      return;
+      // duplicate label
+      return false;
     }
 
     current_id = element_count_++;
     label_to_id_[label] = current_id;
     id_to_label_[current_id] = label;
-    id_to_data_[current_id] = point_typed;
-    current_level = getRandomLevel(mult_);
-    nodes_.emplace_back(current_level, point_typed, M_max_, M_max0_);
+    id_to_data_[current_id] = point_data;
+
+    if (level == -1) {
+      current_level = getRandomLevel(mult_);
+    } else {
+      // friendly to unit test
+      current_level = level;
+    }
+
+    nodes_.emplace_back(current_level, point_data, M_max_, M_max0_);
 
     id_t current_entry_point = entry_point_;
     int current_max_level = max_level_;
 
+    // empty graph
     if (current_entry_point == INVALID_ID) {
       entry_point_ = current_id;
       max_level_ = current_level;
-      return;
+      return true;
     }
 
     id_t nearest_node = current_entry_point;
     for (int level = current_max_level; level > current_level; --level) {
-      nearest_node = searchLayer(point_typed, nearest_node, level, 1).top().id;
+      nearest_node = searchLayer(point_data, nearest_node, level, 1).top().id;
     }
 
     for (int level = std::min(current_level, current_max_level); level >= 0;
          --level) {
       auto neighbors_min_heap =
-          searchLayer(point_typed, nearest_node, level, ef_construction_);
+          searchLayer(point_data, nearest_node, level, ef_construction_);
       size_t M_level = (level == 0) ? M_max0_ : M_max_;
-      selectAndConnectNeighbors(current_id, neighbors_min_heap, M_level, level);
-
-      std::vector<Neighbor> neighbors_vec;
-      while (!neighbors_min_heap.empty()) {
-        neighbors_vec.push_back(neighbors_min_heap.top());
-        neighbors_min_heap.pop();
-      }
-
-      for (const auto &neighbor : neighbors_vec) {
-        if (nodes_[neighbor.id].connections.size() <= level)
-          continue;
-
-        auto &neighbor_connections = nodes_[neighbor.id].connections[level];
-        size_t neighbor_M_level = (level == 0) ? M_max0_ : M_max_;
-
-        if (neighbor_connections.size() > neighbor_M_level) {
-          std::priority_queue<Neighbor> candidates_max_heap;
-          candidates_max_heap.emplace(current_id,
-                                      getDistance(neighbor.id, current_id));
-
-          for (id_t conn_id : neighbor_connections) {
-            if (conn_id == current_id)
-              continue;
-            candidates_max_heap.emplace(conn_id,
-                                        getDistance(neighbor.id, conn_id));
-          }
-
-          neighbor_connections.clear();
-          neighbor_connections.reserve(neighbor_M_level);
-          while (neighbor_connections.size() < neighbor_M_level &&
-                 !candidates_max_heap.empty()) {
-            neighbor_connections.push_back(candidates_max_heap.top().id);
-            candidates_max_heap.pop();
-          }
-        }
-      }
+      nearest_node = selectAndConnectNeighbors(current_id, neighbors_min_heap,
+                                               M_level, level);
     }
 
+    // update entry point if necessary eg. node's level is higher than current
+    // max level
     if (current_level > current_max_level) {
       max_level_ = current_level;
       entry_point_ = current_id;
     }
+    return true;
+  }
+
+  bool addPoint(const void *point, label_t label) {
+    return addPoint(point, label, -1);
   }
 
   auto search(const void *query, int k) const -> std::vector<label_t> {
@@ -201,16 +189,62 @@ private:
     if (!data || !query) {
       throw std::runtime_error("Invalid data pointer encountered");
     }
-    return dist_algo_(query, data);
+    return dist_algo_.distance(query, data, dimension_);
   }
 
-  void selectAndConnectNeighbors(
+  /**
+   * @brief Prune the neighbors in the candidates_min_heap to keep at most
+   * limits neighbors
+   *
+   * @param candidates_min_heap the candidates to prune
+   * @param limits the limits to keep
+   */
+  void pruneNeighbors(
+      std::priority_queue<Neighbor, std::vector<Neighbor>,
+                          std::greater<Neighbor>> &candidates_min_heap,
+      const int limits) {
+    // no need to prune
+    if (candidates_min_heap.size() <= limits) {
+      return;
+    }
+
+    std::vector<Neighbor> top_candidates;
+
+    while (candidates_min_heap.size()) {
+      if (top_candidates.size() == limits) {
+        break;
+      }
+      auto curent_pair = candidates_min_heap.top();
+      candidates_min_heap.pop();
+      bool good = true;
+
+      for (auto &neighbor : top_candidates) {
+        auto curdist = getDistance(curent_pair.id, neighbor.id);
+        if (curdist < curent_pair.distance) {
+          good = false;
+          break;
+        }
+      }
+      if (good) {
+        top_candidates.push_back(curent_pair);
+      }
+    }
+    candidates_min_heap = {};
+    for (const auto &candidate : top_candidates) {
+      candidates_min_heap.emplace(candidate);
+    }
+    return;
+  }
+
+  id_t selectAndConnectNeighbors(
       id_t current_id,
       std::priority_queue<Neighbor, std::vector<Neighbor>,
                           std::greater<Neighbor>> &candidates_min_heap,
       size_t M, int level) {
+    pruneNeighbors(candidates_min_heap, M);
     auto &current_connections = nodes_[current_id].connections[level];
     current_connections.reserve(M);
+    auto nearst_node = candidates_min_heap.top().id;
 
     while (!candidates_min_heap.empty() && current_connections.size() < M) {
       id_t neighbor_id = candidates_min_heap.top().id;
@@ -219,7 +253,23 @@ private:
       current_connections.push_back(neighbor_id);
       auto &neighbor_level_connections = nodes_[neighbor_id].connections[level];
       neighbor_level_connections.push_back(current_id);
+      if (neighbor_level_connections.size() > M) {
+        std::priority_queue<Neighbor, std::vector<Neighbor>,
+                            std::greater<Neighbor>>
+            candidates;
+        for (auto &id : neighbor_level_connections) {
+          candidates.emplace(id, getDistance(neighbor_id, id));
+        }
+        purneNeighbors(candidates, M);
+        neighbor_level_connections.clear();
+        while (!candidates.empty()) {
+          neighbor_level_connections.push_back(candidates.top().id);
+          candidates.pop();
+        }
+      }
     }
+
+    return nearst_node;
   }
 
   std::priority_queue<Neighbor, std::vector<Neighbor>, std::greater<Neighbor>>
@@ -252,10 +302,13 @@ private:
         break;
       }
 
+      // some error occurs
       if (current_best_candidate.id >= nodes_.size() ||
-          nodes_[current_best_candidate.id].connections.size() <= level) {
+          nodes_[current_best_candidate.id].connections.size() <=
+              static_cast<uint32_t>(level)) {
         continue;
       }
+
       const auto &neighbors =
           nodes_[current_best_candidate.id].connections[level];
 
@@ -301,18 +354,18 @@ private:
   std::size_t ef_construction_;
   std::size_t ef_search_;
 
-  double mult_;
+  std::default_random_engine level_generator_;
   id_t entry_point_;
   int max_level_;
+  double mult_;
   std::atomic<id_t> element_count_{0};
-  std::default_random_engine level_generator_;
 
   std::vector<InternalNode> nodes_;
   std::unordered_map<id_t, const T *> id_to_data_;
   std::unordered_map<label_t, id_t> label_to_id_;
   std::unordered_map<id_t, label_t> id_to_label_;
 
-  DistanceAlgorithm<T> dist_algo_;
+  DistanceAlgorithm<T> dist_algo_{};
   SamplingAlgorithm<T, DistanceAlgorithm> sampler_;
 };
 
