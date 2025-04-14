@@ -181,7 +181,7 @@ private:
     if (!data1 || !data2) {
       throw std::runtime_error("Invalid data pointer encountered");
     }
-    return dist_algo_(data1, data2);
+    return dist_algo_.distance(data1, data2, dimension_);
   }
 
   float getDistance(const T *query, id_t id) const {
@@ -202,7 +202,7 @@ private:
   void pruneNeighbors(
       std::priority_queue<Neighbor, std::vector<Neighbor>,
                           std::greater<Neighbor>> &candidates_min_heap,
-      const int limits) {
+      const uint32_t limits) {
     // no need to prune
     if (candidates_min_heap.size() <= limits) {
       return;
@@ -260,7 +260,7 @@ private:
         for (auto &id : neighbor_level_connections) {
           candidates.emplace(id, getDistance(neighbor_id, id));
         }
-        purneNeighbors(candidates, M);
+        pruneNeighbors(candidates, M);
         neighbor_level_connections.clear();
         while (!candidates.empty()) {
           neighbor_level_connections.push_back(candidates.top().id);

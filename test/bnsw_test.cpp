@@ -176,7 +176,23 @@ TEST_CASE("Bnsw searchLayer functionality", "[random test]") {
   }
 }
 
-TEST_CASE("Bnsw prune Neighbors functionality", "[test heuristic]") {}
+TEST_CASE("Bnsw prune Neighbors functionality", "[test heuristic]") {
+  const int dim = 1;
+  const size_t M = 4;
+  const size_t ef = 1;
+  const int seed = 42;
+  using Neighbor = bnsw<float, TestDistance>::Neighbor;
+  bnsw<float, TestDistance> index(dim, M, ef, ef, seed);
+  std::priority_queue<Neighbor, std::vector<Neighbor>, std::greater<Neighbor>>
+      candidates_min_heap;
+  candidates_min_heap.emplace(0, 0);
+  candidates_min_heap.emplace(1, 1);
+
+  BnswTestAccessor::pruneNeighbors(index, candidates_min_heap, 3);
+
+  // less than limits, should not prune
+  REQUIRE(candidates_min_heap.size() == 2);
+}
 
 TEST_CASE("Bnsw selectAndConnectNeighbors functionality",
           "[selectAndConnectNeighbors]") {}
