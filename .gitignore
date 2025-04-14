@@ -2,3 +2,5 @@ compile_commands.json
 .cache
 .vscode
 build/*
+CMakeUserPresets.json
+CMakePresets.json
