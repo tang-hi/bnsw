@@ -14,7 +14,10 @@ T L2SqrDistanceNaive(const T *a, const T *b, std::size_t dim) {
 
 #ifdef __aarch64__
 
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
 #include <arm_neon.h>
+#endif
+
 template <typename T>
 T L2SqrDistanceNeon(const T *a, const T *b, std::size_t dim) {
   float32x4_t sum_vec = vdupq_n_f32(0.0f);
@@ -86,7 +89,7 @@ public:
 #endif
   }
 
-  T distance(const T *a, const T *b, std::size_t dim) {
+  T distance(const T *a, const T *b, std::size_t dim) const {
     return distance_function(a, b, dim);
   }
 
