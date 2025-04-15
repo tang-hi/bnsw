@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <queue>
@@ -143,7 +144,7 @@ public:
     return addPoint(point, label, -1);
   }
 
-  auto search(const void *query, int k) const -> std::vector<label_t> {
+  auto search(const void *query, std::size_t k) const -> std::vector<label_t> {
     const T *query_typed = static_cast<const T *>(query);
     id_t current_entry_point = entry_point_;
     int current_max_level = max_level_;

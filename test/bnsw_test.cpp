@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <queue>
 #include <random>
 #include <vector>
@@ -335,6 +336,67 @@ TEST_CASE("Bnsw selectAndConnectNeighbors functionality",
                     current_id) == neighbor4_connections.end());
 }
 
-TEST_CASE("Bnsw search functionality", "[search-recall]") {}
+TEST_CASE("Bnsw search functionality", "[search-recall]") {
+  const int dim = 1;
+  const size_t M = 16;
+  const size_t ef = 40;
+  const int seed = 42;
+  const int element_count = 3000;
+  std::vector<std::pair<float, int>> points;
+  points.reserve(element_count);
+  std::default_random_engine generator(seed);
+  std::uniform_real_distribution<float> distribution(0.0, 1000.0);
+  for (int i = 0; i < element_count; i++) {
+    float ra = distribution(generator);
+    points.push_back({ra, i});
+  }
+
+  bnsw<float, TestDistance> index(dim, M, ef, ef, seed);
+  for (const auto &point : points) {
+    index.addPoint(&point.first, point.second);
+  }
+
+  const int search_query_count = 100;
+  const uint32_t k = 10;
+
+  for (int i = 0; i < search_query_count; i++) {
+    auto query_index =
+        std::uniform_int_distribution<>(0, points.size() - 1)(generator);
+    auto query = points[query_index].first;
+    auto result = index.search(&query, k);
+
+    // Check if the result size is correct
+    REQUIRE(result.size() == k);
+
+    // Check if the results are unique
+    std::unordered_set<int> unique_results(result.begin(), result.end());
+    REQUIRE(unique_results.size() == k);
+
+    // get the ground truth
+    std::sort(points.begin(), points.end(),
+              [&query](const auto &a, const auto &b) {
+                return std::abs(a.first - query) < std::abs(b.first - query);
+              });
+
+    std::vector<int> ground_truth;
+    ground_truth.reserve(k);
+    for (auto j = 0u; j < k; ++j) {
+      ground_truth.push_back(points[j].second);
+    }
+
+    float recalled = 0;
+    // Check if the results are in the ground truth
+    for (const auto &result_id : result) {
+      if (std::find(ground_truth.begin(), ground_truth.end(), result_id) !=
+          ground_truth.end()) {
+        recalled++;
+      }
+    }
+
+    float recall_rate = recalled / k;
+    std::cout << "Recall rate: " << recall_rate << std::endl;
+    // REQUIRE(recall_rate >= 0.8);
+  }
+}
 
 }; // namespace bnsw

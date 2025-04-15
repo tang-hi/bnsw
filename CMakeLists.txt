@@ -11,7 +11,7 @@ set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} "/usr/include/eigen3" "/usr/local/inc
 
 # Detect host architecture and set appropriate compiler flags
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "amd64|x86_64")
-  set(ARCH_FLAGS "-mavx2")
+  set(ARCH_FLAGS "-march=native")
   message(STATUS "Detected x86_64 architecture, enabling AVX2 instructions")
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
   set(ARCH_FLAGS "-march=native")
@@ -27,6 +27,16 @@ find_package(spdlog REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Catch2 REQUIRED)
 find_package(fmt REQUIRED)
+
+# Automatically find all test files using glob patterns
+file(GLOB_RECURSE TEST_FILES "test/*.cpp")
+message(STATUS "Found test files: ${TEST_FILES}")
+
+# Add a combined all_tests target
+add_executable(all_tests ${TEST_FILES})
+target_link_libraries(all_tests Catch2::Catch2WithMain Eigen3::Eigen spdlog::spdlog fmt::fmt)
+target_include_directories(all_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(all_tests PRIVATE -Wall -Wextra -Wpedantic -Werror ${ARCH_FLAGS} -g)
 
 add_executable(utils_test test/utils_test.cpp)
 target_link_libraries(utils_test Catch2::Catch2WithMain Eigen3::Eigen)
@@ -46,4 +56,4 @@ target_compile_options(adsampling_test PRIVATE -Wall -Wextra -Wpedantic -Werror 
 add_executable(bnsw_test test/bnsw_test.cpp)
 target_link_libraries(bnsw_test Catch2::Catch2WithMain Eigen3::Eigen)
 target_include_directories(bnsw_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_options(bnsw_test PRIVATE -Wall -Wextra -Wpedantic -Werror ${ARCH_FLAGS} -g)
+target_compile_options(bnsw_test PRIVATE -Wall -Wextra -Wpedantic -Werror ${ARCH_FLAGS} -g -O0)
