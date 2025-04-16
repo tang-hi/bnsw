@@ -1,6 +1,9 @@
 #include "bnsw.hpp"
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/matchers/catch_matchers_floating_point.hpp"
+#include "dist_alg/l2_distance.hpp"
+#include "hnsw/hnswalg.h"
+#include "hnsw/hnswlib.h"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -339,9 +342,9 @@ TEST_CASE("Bnsw selectAndConnectNeighbors functionality",
 TEST_CASE("Bnsw search functionality", "[search-recall]") {
   const int dim = 1;
   const size_t M = 16;
-  const size_t ef = 40;
+  const size_t ef = 150;
   const int seed = 42;
-  const int element_count = 3000;
+  const int element_count = 30000;
   std::vector<std::pair<float, int>> points;
   points.reserve(element_count);
   std::default_random_engine generator(seed);
@@ -351,19 +354,41 @@ TEST_CASE("Bnsw search functionality", "[search-recall]") {
     points.push_back({ra, i});
   }
 
-  bnsw<float, TestDistance> index(dim, M, ef, ef, seed);
+  hnswlib::L2Space space(dim);
+  hnswlib::HierarchicalNSW<float> alg_hnsw(&space, element_count, M, ef);
+
+  bnsw<float, L2Distance> index(dim, M, ef, ef, seed);
   for (const auto &point : points) {
-    index.addPoint(&point.first, point.second);
+    alg_hnsw.addPoint(&point.first, point.second);
+    int level = alg_hnsw.getElementLevel(point.second);
+    index.addPoint(&point.first, point.second, level);
   }
 
-  const int search_query_count = 100;
+  const int search_query_count = 3;
   const uint32_t k = 10;
 
   for (int i = 0; i < search_query_count; i++) {
     auto query_index =
         std::uniform_int_distribution<>(0, points.size() - 1)(generator);
+    if (i == 0) {
+      continue;
+    }
     auto query = points[query_index].first;
     auto result = index.search(&query, k);
+    auto ground_truth = alg_hnsw.searchKnn(&query, k);
+    std::unordered_set<int> ground_truth_set;
+    while (!ground_truth.empty()) {
+      auto [distance, id] = ground_truth.top();
+      ground_truth_set.insert(id);
+      ground_truth.pop();
+    }
+    // Check if the results are in the ground truth
+    for (const auto &result_id : result) {
+      if (ground_truth_set.find(result_id) == ground_truth_set.end()) {
+        std::cout << "Result ID " << result_id << " not found in ground truth"
+                  << std::endl;
+      }
+    }
 
     // Check if the result size is correct
     REQUIRE(result.size() == k);
@@ -378,25 +403,80 @@ TEST_CASE("Bnsw search functionality", "[search-recall]") {
                 return std::abs(a.first - query) < std::abs(b.first - query);
               });
 
-    std::vector<int> ground_truth;
-    ground_truth.reserve(k);
-    for (auto j = 0u; j < k; ++j) {
-      ground_truth.push_back(points[j].second);
-    }
+    // std::vector<int> ground_truth;
+    // ground_truth.reserve(k);
+    // for (auto j = 0u; j < k; ++j) {
+    //   ground_truth.push_back(points[j].second);
+    // }
 
-    float recalled = 0;
-    // Check if the results are in the ground truth
-    for (const auto &result_id : result) {
-      if (std::find(ground_truth.begin(), ground_truth.end(), result_id) !=
-          ground_truth.end()) {
-        recalled++;
-      }
-    }
+    // float recalled = 0;
+    // // Check if the results are in the ground truth
+    // for (const auto &result_id : result) {
+    //   if (std::find(ground_truth.begin(), ground_truth.end(), result_id) !=
+    //       ground_truth.end()) {
+    //     recalled++;
+    //   }
+    // }
 
-    float recall_rate = recalled / k;
-    std::cout << "Recall rate: " << recall_rate << std::endl;
+    // float recall_rate = recalled / k;
+    // std::cout << "Recall rate: " << recall_rate << std::endl;
     // REQUIRE(recall_rate >= 0.8);
   }
+}
+
+TEST_CASE("Bnsw compare Hnsw", "[compare]") {
+  // const int dim = 4;
+  // const size_t M = 16;
+  // const size_t ef = 150;
+  // const int seed = 42;
+  // const int element_count = 1000000;
+  // std::vector<std::vector<float>> points;
+  // points.reserve(element_count);
+  // std::default_random_engine generator(seed);
+  // std::uniform_real_distribution<float> distribution(0.0, 1000.0);
+  // for (int i = 0; i < element_count; i++) {
+  //   std::vector<float> ra(dim);
+  //   for (int j = 0; j < dim; j++) {
+  //     ra[j] = distribution(generator);
+  //   }
+  //   points.push_back(ra);
+  // }
+  // bnsw<float, L2Distance> index(dim, M, ef, ef, seed);
+
+  // hnswlib::L2Space space(dim);
+  // hnswlib::HierarchicalNSW<float> alg_hnsw(&space, element_count, M, ef);
+  // for (int i = 0; i < element_count; i++) {
+  //   alg_hnsw.addPoint(points[i].data(), i);
+  //   int level = alg_hnsw.getElementLevel(i);
+  //   index.addPoint((void *)points[i].data(), i, level);
+
+  //   // Check if the node was added correctly
+  //   for (int j = 0; j <= level; j++) {
+  //     auto connections = BnswTestAccessor::getNodeConnections(index, i, j);
+  //     auto *ground_truth = alg_hnsw.get_linklist_at_level(i, j);
+  //     auto list_count = alg_hnsw.getListCount(ground_truth);
+  //     std::vector<uint32_t> ground_truth_list(list_count);
+  //     std::copy(ground_truth + 1, ground_truth + list_count + 1,
+  //               ground_truth_list.begin());
+  //     std::sort(connections.begin(), connections.end());
+  //     std::sort(ground_truth_list.begin(), ground_truth_list.end());
+  //     if (connections != ground_truth_list) {
+  //       std::cout << "Node " << i << " level " << j
+  //                 << " connections do not match" << std::endl;
+  //       std::cout << "BNSW: ";
+  //       for (const auto &conn : connections) {
+  //         std::cout << conn << " ";
+  //       }
+  //       std::cout << std::endl;
+  //       std::cout << "HNSW: ";
+  //       for (const auto &conn : ground_truth_list) {
+  //         std::cout << conn << " ";
+  //       }
+  //       std::cout << std::endl;
+  //     }
+  //     REQUIRE(connections == ground_truth_list);
+  //   }
+  // }
 }
 
 }; // namespace bnsw

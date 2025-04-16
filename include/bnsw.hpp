@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <queue>
 #include <random>
@@ -152,10 +153,31 @@ public:
     if (current_entry_point == INVALID_ID || nodes_.empty()) {
       return {};
     }
+    std::cout << "current_entry_point: " << current_entry_point
+              << ", current_max_level: " << current_max_level << std::endl;
 
     id_t nearest_node = current_entry_point;
+    float min_distance = getDistance(query_typed, nearest_node);
     for (int level = current_max_level; level > 0; --level) {
-      nearest_node = searchLayer(query_typed, nearest_node, level, 1).top().id;
+      bool changed = true;
+      while (changed) {
+        changed = false;
+        auto &neighbors = nodes_[nearest_node].connections[level];
+        for (id_t neighbor_id : neighbors) {
+          if (neighbor_id >= nodes_.size()) {
+            throw std::runtime_error("Invalid neighbor ID");
+          }
+          float dist = getDistance(query_typed, neighbor_id);
+          std::cout << "test neighbor_id: " << neighbor_id
+                    << " at level: " << level << ", dist: " << dist
+                    << ", min_distance: " << min_distance << std::endl;
+          if (dist < min_distance) {
+            min_distance = dist;
+            nearest_node = neighbor_id;
+            changed = true;
+          }
+        }
+      }
     }
 
     auto top_candidates_min_heap =
@@ -205,7 +227,7 @@ private:
                           std::greater<Neighbor>> &candidates_min_heap,
       const uint32_t limits) {
     // no need to prune
-    if (candidates_min_heap.size() <= limits) {
+    if (candidates_min_heap.size() < limits) {
       return;
     }
 
@@ -242,7 +264,7 @@ private:
       std::priority_queue<Neighbor, std::vector<Neighbor>,
                           std::greater<Neighbor>> &candidates_min_heap,
       size_t M, int level) {
-    pruneNeighbors(candidates_min_heap, M);
+    pruneNeighbors(candidates_min_heap, M_);
     auto &current_connections = nodes_[current_id].connections[level];
     current_connections.reserve(M);
     auto nearst_node = candidates_min_heap.top().id;
