@@ -153,8 +153,6 @@ public:
     if (current_entry_point == INVALID_ID || nodes_.empty()) {
       return {};
     }
-    std::cout << "current_entry_point: " << current_entry_point
-              << ", current_max_level: " << current_max_level << std::endl;
 
     id_t nearest_node = current_entry_point;
     float min_distance = getDistance(query_typed, nearest_node);
@@ -162,15 +160,12 @@ public:
       bool changed = true;
       while (changed) {
         changed = false;
-        auto &neighbors = nodes_[nearest_node].connections[level];
+        const auto &neighbors = nodes_[nearest_node].connections[level];
         for (id_t neighbor_id : neighbors) {
           if (neighbor_id >= nodes_.size()) {
             throw std::runtime_error("Invalid neighbor ID");
           }
           float dist = getDistance(query_typed, neighbor_id);
-          std::cout << "test neighbor_id: " << neighbor_id
-                    << " at level: " << level << ", dist: " << dist
-                    << ", min_distance: " << min_distance << std::endl;
           if (dist < min_distance) {
             min_distance = dist;
             nearest_node = neighbor_id;

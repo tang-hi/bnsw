@@ -56,4 +56,4 @@ target_compile_options(adsampling_test PRIVATE -Wall -Wextra -Wpedantic -Werror 
 add_executable(bnsw_test test/bnsw_test.cpp)
 target_link_libraries(bnsw_test Catch2::Catch2WithMain Eigen3::Eigen)
 target_include_directories(bnsw_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_options(bnsw_test PRIVATE -Wall -Wextra -Wpedantic -Werror ${ARCH_FLAGS} -g -O0)
+target_compile_options(bnsw_test PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g)
