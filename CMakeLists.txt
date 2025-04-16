@@ -56,4 +56,16 @@ target_compile_options(adsampling_test PRIVATE -Wall -Wextra -Wpedantic -Werror 
 add_executable(bnsw_test test/bnsw_test.cpp)
 target_link_libraries(bnsw_test Catch2::Catch2WithMain Eigen3::Eigen)
 target_include_directories(bnsw_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_options(bnsw_test PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g)
+target_compile_options(bnsw_test PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O0)
+
+
+
+add_executable(sift1m demo/sift1m.cpp)
+target_link_libraries(sift1m Eigen3::Eigen spdlog::spdlog)
+target_include_directories(sift1m PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(sift1m PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O3)
+
+add_executable(adsampling_bench benchmark/adsampling.cpp)
+target_link_libraries(adsampling_bench Catch2::Catch2WithMain Eigen3::Eigen spdlog::spdlog)
+target_include_directories(adsampling_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(adsampling_bench PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O2)

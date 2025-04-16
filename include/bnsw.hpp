@@ -29,6 +29,7 @@ class bnsw {
   using label_t = std::uint32_t;
 
   static constexpr id_t INVALID_ID = std::numeric_limits<id_t>::max();
+  static constexpr bool need_convert = SamplingAlgorithm<T, DistanceAlgorithm>::need_convert;
 
 public:
   struct InternalNode {
@@ -85,6 +86,9 @@ public:
 
   bool addPoint(const void *point, label_t label, int level) {
     const T *point_data = static_cast<const T *>(point);
+    if constexpr (need_convert) {
+      sampler_.convert(point_data);
+    }
     id_t current_id;
     int current_level;
 
@@ -146,6 +150,9 @@ public:
 
   auto search(const void *query, std::size_t k) const -> std::vector<label_t> {
     const T *query_typed = static_cast<const T *>(query);
+    if constexpr (need_convert) {
+      sampler_.convert(query_typed);
+    }
     id_t current_entry_point = entry_point_;
     int current_max_level = max_level_;
 
@@ -329,20 +336,35 @@ private:
       const auto &neighbors =
           nodes_[current_best_candidate.id].connections[level];
 
+      float lower_bound = results_max_heap.top().distance;
       for (id_t neighbor_id : neighbors) {
         if (visited.find(neighbor_id) == visited.end()) {
           visited.insert(neighbor_id);
-          float dist = getDistance(query, neighbor_id);
-
-          if (results_max_heap.size() < ef ||
-              dist < results_max_heap.top().distance) {
+          if (results_max_heap.size() < ef) {
+            float dist = getDistance(query, neighbor_id);
             candidates_min_heap.emplace(neighbor_id, dist);
             results_max_heap.emplace(neighbor_id, dist);
-
-            if (results_max_heap.size() > ef) {
-              results_max_heap.pop();
-            }
+            lower_bound = results_max_heap.top().distance;
+          } else if (float dist = 0.0; !sampler_.above_threshold(
+                         query, id_to_data_.at(neighbor_id), lower_bound,
+                         dist)) {
+            candidates_min_heap.emplace(neighbor_id, dist);
+            results_max_heap.emplace(neighbor_id, dist);
+            lower_bound = results_max_heap.top().distance;
           }
+
+          if (results_max_heap.size() > ef) {
+            results_max_heap.pop();
+          }
+          // if (results_max_heap.size() < ef ||
+          //     dist < results_max_heap.top().distance) {
+          //   candidates_min_heap.emplace(neighbor_id, dist);
+          //   results_max_heap.emplace(neighbor_id, dist);
+
+          //   if (results_max_heap.size() > ef) {
+          //     results_max_heap.pop();
+          //   }
+          // }
         }
       }
     }
