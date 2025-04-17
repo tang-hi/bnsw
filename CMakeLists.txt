@@ -69,3 +69,8 @@ add_executable(adsampling_bench benchmark/adsampling_bench.cpp)
 target_link_libraries(adsampling_bench Catch2::Catch2WithMain Eigen3::Eigen spdlog::spdlog)
 target_include_directories(adsampling_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(adsampling_bench PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O2)
+
+add_executable(gist1m demo/gist1m.cpp)
+target_link_libraries(gist1m Eigen3::Eigen spdlog::spdlog)
+target_include_directories(gist1m PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(gist1m PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O3)

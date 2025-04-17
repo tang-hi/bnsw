@@ -9,35 +9,35 @@
 #include <iostream>
 int main() {
 
-  // read sift1m
+  // read gist1m
   std::filesystem::path root_path = "/Users/tangdonghai/projects/bnsw";
-  std::filesystem::path sift1m_path =
-      root_path / "dataset/sift1m/sift_base.fvecs";
-  std::ifstream sift1m_file(sift1m_path, std::ios::binary);
-  if (!sift1m_file) {
-    spdlog::error("Error opening file: {}", sift1m_path.string());
+  std::filesystem::path gist1m_path =
+      root_path / "dataset/gist/gist_base.fvecs";
+  std::ifstream gist1m_file(gist1m_path, std::ios::binary);
+  if (!gist1m_file) {
+    spdlog::error("Error opening file: {}", gist1m_path.string());
     return 1;
   }
 
   // Read the number of vectors and their dimension
   int dim = 0;
-  sift1m_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
+  gist1m_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
   int num_vectors = 0;
-  num_vectors = std::filesystem::file_size(sift1m_path) / (dim * sizeof(float));
+  num_vectors = std::filesystem::file_size(gist1m_path) / (dim * sizeof(float));
 
   // Read the vectors
   std::vector<std::vector<float>> vectors(num_vectors, std::vector<float>(dim));
-  sift1m_file.seekg(0, std::ios::beg);
+  gist1m_file.seekg(0, std::ios::beg);
   for (int i = 0; i < num_vectors; ++i) {
-    sift1m_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
-    sift1m_file.read(reinterpret_cast<char *>(vectors[i].data()),
+    gist1m_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
+    gist1m_file.read(reinterpret_cast<char *>(vectors[i].data()),
                      dim * sizeof(float));
   }
 
   // Close the file
-  sift1m_file.close();
+  gist1m_file.close();
   spdlog::info("Read {} vectors of dimension {} from {}", num_vectors, dim,
-               sift1m_path.string());
+               gist1m_path.string());
   bnsw::bnsw<float, L2Distance, bnsw::AdSampling> bnsw_instance(dim);
   auto build_start = std::chrono::high_resolution_clock::now();
   spdlog::info("Building BNSW index...");
@@ -53,31 +53,31 @@ int main() {
                build_duration.count(),
                build_duration.count() / num_vectors * 1000);
 
-  // read sift1m query
-  std::filesystem::path sift1m_query_path =
-      root_path / "dataset/sift1m/sift_query.fvecs";
-  std::ifstream sift1m_query_file(sift1m_query_path, std::ios::binary);
-  if (!sift1m_query_file) {
-    spdlog::error("Error opening file: {}", sift1m_query_path.string());
+  // read gist1m query
+  std::filesystem::path gist1m_query_path =
+      root_path / "dataset/gist/gist_query.fvecs";
+  std::ifstream gist1m_query_file(gist1m_query_path, std::ios::binary);
+  if (!gist1m_query_file) {
+    spdlog::error("Error opening file: {}", gist1m_query_path.string());
     return 1;
   }
 
   // Read the number of vectors and their dimension
   int num_query_vectors = 0;
-  sift1m_query_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
+  gist1m_query_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
   num_query_vectors =
-      std::filesystem::file_size(sift1m_query_path) / (dim * sizeof(float));
+      std::filesystem::file_size(gist1m_query_path) / (dim * sizeof(float));
   // Read the vectors
   std::vector<std::vector<float>> query_vectors(num_query_vectors,
                                                 std::vector<float>(dim));
-  sift1m_query_file.seekg(0, std::ios::beg);
+  gist1m_query_file.seekg(0, std::ios::beg);
   for (int i = 0; i < num_query_vectors; ++i) {
-    sift1m_query_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
-    sift1m_query_file.read(reinterpret_cast<char *>(query_vectors[i].data()),
+    gist1m_query_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
+    gist1m_query_file.read(reinterpret_cast<char *>(query_vectors[i].data()),
                            dim * sizeof(float));
   }
   // Close the file
-  sift1m_query_file.close();
+  gist1m_query_file.close();
   // Search for the nearest neighbors
   int k = 100;
   auto search_start = std::chrono::high_resolution_clock::now();
@@ -96,29 +96,29 @@ int main() {
                search_duration.count() / num_query_vectors * 1000);
 
   // Read the ground truth
-  std::filesystem::path sift1m_gt_path =
-      root_path / "dataset/sift1m/sift_groundtruth.ivecs";
-  std::ifstream sift1m_gt_file(sift1m_gt_path, std::ios::binary);
-  if (!sift1m_gt_file) {
-    spdlog::error("Error opening file: {}", sift1m_gt_path.string());
+  std::filesystem::path gist1m_gt_path =
+      root_path / "dataset/gist/gist_groundtruth.ivecs";
+  std::ifstream gist1m_gt_file(gist1m_gt_path, std::ios::binary);
+  if (!gist1m_gt_file) {
+    spdlog::error("Error opening file: {}", gist1m_gt_path.string());
     return 1;
   }
   // Read the number of vectors and their dimension
   int num_gt_vectors = 0;
-  sift1m_gt_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
+  gist1m_gt_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
   num_gt_vectors =
-      std::filesystem::file_size(sift1m_gt_path) / (k * sizeof(uint32_t));
-  sift1m_gt_file.seekg(0, std::ios::beg);
+      std::filesystem::file_size(gist1m_gt_path) / (k * sizeof(uint32_t));
+  gist1m_gt_file.seekg(0, std::ios::beg);
   // Read the vectors
   std::vector<std::vector<uint32_t>> gt_vectors(num_gt_vectors,
                                                 std::vector<uint32_t>(k));
   for (int i = 0; i < num_gt_vectors; ++i) {
-    sift1m_gt_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
-    sift1m_gt_file.read(reinterpret_cast<char *>(gt_vectors[i].data()),
+    gist1m_gt_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
+    gist1m_gt_file.read(reinterpret_cast<char *>(gt_vectors[i].data()),
                         k * sizeof(uint32_t));
   }
 
-  sift1m_gt_file.close();
+  gist1m_gt_file.close();
 
   // Calculate recall
   int total_recall = 0;

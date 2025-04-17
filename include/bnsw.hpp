@@ -1,6 +1,8 @@
 #pragma once
 
 #include "adsampling.hpp"
+#include "utils.hpp"
+#include <Eigen/src/Core/Matrix.h>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -29,7 +31,8 @@ class bnsw {
   using label_t = std::uint32_t;
 
   static constexpr id_t INVALID_ID = std::numeric_limits<id_t>::max();
-  static constexpr bool need_convert = SamplingAlgorithm<T, DistanceAlgorithm>::need_convert;
+  static constexpr bool need_convert =
+      SamplingAlgorithm<T, DistanceAlgorithm>::need_convert;
 
 public:
   struct InternalNode {
@@ -72,7 +75,8 @@ public:
       : dimension_(dimension), M_(M), M_max_(M), M_max0_(M * 2),
         ef_construction_(ef_construction), ef_search_(ef_search),
         level_generator_(random_seed), entry_point_(INVALID_ID), max_level_(-1),
-        mult_(1.0 / std::log(1.0 * M)), sampler_(dimension) {
+        mult_(1.0 / std::log(1.0 * M)), sampler_(dimension),
+        orthogonal_matrix_(createOrthogonal(dimension)) {
 
     static_assert(std::is_default_constructible_v<DistanceAlgorithm<T>>,
                   "DistanceAlgorithm must be default constructible");
@@ -80,6 +84,7 @@ public:
       throw std::invalid_argument("M cannot be 0");
     if (ef_construction == 0)
       throw std::invalid_argument("ef_construction cannot be 0");
+    sampler_.set_orthogonal_matrix(&orthogonal_matrix_);
   }
 
   ~bnsw() = default;
@@ -406,6 +411,7 @@ private:
 
   DistanceAlgorithm<T> dist_algo_{};
   SamplingAlgorithm<T, DistanceAlgorithm> sampler_;
+  Eigen::MatrixXf orthogonal_matrix_;
 };
 
 }; // namespace bnsw

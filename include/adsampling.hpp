@@ -4,6 +4,8 @@
 #include "dist_alg/l2_distance.hpp"
 #include <cmath>
 #include <type_traits>
+#include <vector>
+
 namespace bnsw {
 
 template <typename T,
@@ -15,7 +17,19 @@ class AdSampling {
 
 public:
   static constexpr bool need_convert = true;
-  explicit AdSampling(int dimension) : dimension(dimension) {}
+  explicit AdSampling(int dimension) : dimension(dimension) {
+    // Precompute r threshold factors
+    int num_steps = dimension / batch;
+    if (num_steps > 0) {
+      r_threshold_factors.resize(num_steps);
+      for (int i = 0; i < num_steps; ++i) {
+        double current_dimension = static_cast<double>((i + 1) * batch);
+        double factor = 1.0 + eps0 / std::sqrt(current_dimension);
+        r_threshold_factors[i] =
+            (current_dimension / this->dimension) * factor * factor;
+      }
+    }
+  }
 
   float distance(const T *a, const T *b) {
     return distance_algorithm.distance(a, b, dimension);
@@ -43,20 +57,27 @@ public:
       return estimate > threshold;
     }
     estimate = 0.0f;
-    for (int i = 0; i < dimension / batch; ++i) {
+    int i = 0;
+    for (; i < dimension / batch; ++i) {
       const auto *a_ptr = a + i * batch;
       const auto *b_ptr = b + i * batch;
       estimate += distance_algorithm.distance(a_ptr, b_ptr, batch);
       auto current_dimension = (i + 1) * batch;
-      double r = (1.0 * current_dimension / dimension) *
-                 (1.0 + eps0 / std::sqrt(current_dimension)) *
-                 (1.0 + eps0 / std::sqrt(current_dimension));
+      double r = r_threshold_factors[i];
       if (current_dimension < dimension && estimate > threshold * r) {
         early_stop_count += 1;
         estimate = estimate * dimension / current_dimension;
         return true;
       }
+
+      if (i == dimension / batch - 1) {
+        // Handle the last batch
+        int remaining_dimension = dimension - (i + 1) * batch;
+        estimate += distance_algorithm.distance(
+            a + (i + 1) * batch, b + (i + 1) * batch, remaining_dimension);
+      }
     }
+
     return estimate > threshold;
   }
 
@@ -67,7 +88,8 @@ private:
   int dimension{0};
   const Eigen::MatrixXf *orthogonal_matrix{nullptr};
   DistanceAlgorithm<T> distance_algorithm;
-  constexpr static const int batch = 128;
+  std::vector<double> r_threshold_factors; // Store precomputed r values
+  constexpr static const int batch = 64;
   constexpr static const double eps0 = 2.1;
 };
 
