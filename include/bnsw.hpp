@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <limits>
 #include <queue>
 #include <random>
@@ -86,6 +87,8 @@ public:
       throw std::invalid_argument("ef_construction cannot be 0");
     sampler_.set_orthogonal_matrix(&orthogonal_matrix_);
   }
+
+  bnsw() = default;
 
   ~bnsw() = default;
 
@@ -331,13 +334,6 @@ private:
         break;
       }
 
-      // some error occurs
-      if (current_best_candidate.id >= nodes_.size() ||
-          nodes_[current_best_candidate.id].connections.size() <=
-              static_cast<uint32_t>(level)) {
-        continue;
-      }
-
       const auto &neighbors =
           nodes_[current_best_candidate.id].connections[level];
 
@@ -388,6 +384,73 @@ private:
     std::uniform_real_distribution<> distribution(0.0, 1.0);
     double r = -std::log(distribution(level_generator_)) * reverse_size;
     return static_cast<int>(r);
+  }
+
+  void saveIndex(const std::string &location) {
+    std::ofstream ofs(location, std::ios::binary);
+    if (!ofs) {
+      throw std::runtime_error("Failed to open file for writing");
+    }
+    ofs.write(reinterpret_cast<const char *>(&dimension_), sizeof(dimension_));
+    ofs.write(reinterpret_cast<const char *>(&M_), sizeof(M_));
+    ofs.write(reinterpret_cast<const char *>(&M_max_), sizeof(M_max_));
+    ofs.write(reinterpret_cast<const char *>(&M_max0_), sizeof(M_max0_));
+    ofs.write(reinterpret_cast<const char *>(&ef_construction_),
+              sizeof(ef_construction_));
+    ofs.write(reinterpret_cast<const char *>(&ef_search_), sizeof(ef_search_));
+    ofs.write(reinterpret_cast<const char *>(&entry_point_),
+              sizeof(entry_point_));
+    ofs.write(reinterpret_cast<const char *>(&max_level_), sizeof(max_level_));
+    ofs.write(reinterpret_cast<const char *>(&mult_), sizeof(mult_));
+    ofs.write(reinterpret_cast<const char *>(&element_count_),
+              sizeof(element_count_));
+    for (const auto &node : nodes_) {
+      int level = node.level;
+      ofs.write(reinterpret_cast<const char *>(&level), sizeof(level));
+      ofs.write(reinterpret_cast<const char *>(node.point_data),
+                dimension_ * sizeof(T));
+      std::size_t size = node.connections.size();
+      ofs.write(reinterpret_cast<const char *>(&size), sizeof(size));
+      for (const auto &connections : node.connections) {
+        std::size_t size = connections.size();
+        ofs.write(reinterpret_cast<const char *>(&size), sizeof(size));
+        ofs.write(reinterpret_cast<const char *>(connections.data()),
+                  size * sizeof(id_t));
+      }
+    }
+    std::size_t id_to_data_size = id_to_data_.size();
+    ofs.write(reinterpret_cast<const char *>(&id_to_data_size),
+              sizeof(id_to_data_size));
+    for (const auto &[id, data] : id_to_data_) {
+      ofs.write(reinterpret_cast<const char *>(&id), sizeof(id));
+      ofs.write(reinterpret_cast<const char *>(data), dimension_ * sizeof(T));
+    }
+    std::size_t label_to_id_size = label_to_id_.size();
+    ofs.write(reinterpret_cast<const char *>(&label_to_id_size),
+              sizeof(label_to_id_size));
+    for (const auto &[label, id] : label_to_id_) {
+      ofs.write(reinterpret_cast<const char *>(&label), sizeof(label));
+      ofs.write(reinterpret_cast<const char *>(&id), sizeof(id));
+    }
+    std::size_t id_to_label_size = id_to_label_.size();
+    ofs.write(reinterpret_cast<const char *>(&id_to_label_size),
+              sizeof(id_to_label_size));
+    for (const auto &[id, label] : id_to_label_) {
+      ofs.write(reinterpret_cast<const char *>(&id), sizeof(id));
+      ofs.write(reinterpret_cast<const char *>(&label), sizeof(label));
+    }
+
+    std::size_t orthogonal_matrix_size = orthogonal_matrix_.size();
+    ofs.write(reinterpret_cast<const char *>(&orthogonal_matrix_size),
+              sizeof(orthogonal_matrix_size));
+    ofs.write(reinterpret_cast<const char *>(orthogonal_matrix_.data()),
+              orthogonal_matrix_size * sizeof(float));
+    ofs.close();
+  }
+
+
+  void loadIndex(const std::string &location) {
+
   }
 
 private:

@@ -89,7 +89,7 @@ private:
   const Eigen::MatrixXf *orthogonal_matrix{nullptr};
   DistanceAlgorithm<T> distance_algorithm;
   std::vector<double> r_threshold_factors; // Store precomputed r values
-  constexpr static const int batch = 64;
+  constexpr static const int batch = 128;
   constexpr static const double eps0 = 2.1;
 };
 

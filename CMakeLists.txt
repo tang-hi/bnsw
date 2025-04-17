@@ -27,6 +27,7 @@ find_package(spdlog REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Catch2 REQUIRED)
 find_package(fmt REQUIRED)
+# find_package(roaring REQUIRED)
 
 # Automatically find all test files using glob patterns
 file(GLOB_RECURSE TEST_FILES "test/*.cpp")
@@ -74,3 +75,14 @@ add_executable(gist1m demo/gist1m.cpp)
 target_link_libraries(gist1m Eigen3::Eigen spdlog::spdlog)
 target_include_directories(gist1m PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(gist1m PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O3)
+
+add_executable(hnswlib_sift1m demo/hnswlib-sift1m.cpp)
+target_link_libraries(hnswlib_sift1m Eigen3::Eigen spdlog::spdlog)
+target_include_directories(hnswlib_sift1m PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/third_party/hnswlib)
+target_compile_options(hnswlib_sift1m PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O3)
+
+
+add_executable(hnswlib_gist1m demo/hnswlib-gist1m.cpp)
+target_link_libraries(hnswlib_gist1m Eigen3::Eigen spdlog::spdlog)
+target_include_directories(hnswlib_gist1m PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/third_party/hnswlib)
+target_compile_options(hnswlib_gist1m PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O3)

@@ -1,7 +1,4 @@
-#include "adsampling.hpp"
-#include "bnsw.hpp"
-#include "dist_alg/l2_distance.hpp"
-#include "nonsampling.hpp"
+#include "hnswlib/hnswlib.h"
 #include "spdlog/spdlog.h"
 #include <cstdint>
 #include <filesystem>
@@ -38,18 +35,19 @@ int main() {
   gist1m_file.close();
   spdlog::info("Read {} vectors of dimension {} from {}", num_vectors, dim,
                gist1m_path.string());
-  bnsw::bnsw<float, L2Distance, bnsw::AdSampling> bnsw_instance(dim);
+  hnswlib::L2Space space(dim);
+  hnswlib::HierarchicalNSW<float> hnsw(&space, num_vectors, 24, 500);
   auto build_start = std::chrono::high_resolution_clock::now();
   spdlog::info("Building BNSW index...");
   for (int i = 0; i < num_vectors; ++i) {
-    bnsw_instance.addPoint(vectors[i].data(), i);
+    hnsw.addPoint(vectors[i].data(), i);
     if (i % 10000 == 0) {
       spdlog::info("Added {} vectors", i);
     }
   }
   auto build_end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> build_duration = build_end - build_start;
-  spdlog::info("BNSW index built in {} seconds, avg {} ms",
+  spdlog::info("HNSW index built in {} seconds, avg {} ms",
                build_duration.count(),
                build_duration.count() / num_vectors * 1000);
 
@@ -82,9 +80,17 @@ int main() {
   int k = 100;
   auto search_start = std::chrono::high_resolution_clock::now();
   std::vector<std::vector<uint32_t>> results(num_query_vectors);
+  for (int i = 0; i < num_query_vectors; ++i) {
+    results[i].reserve(k);
+  }
   spdlog::info("Searching for {} nearest neighbors...", k);
   for (int i = 0; i < num_query_vectors; ++i) {
-    results[i] = bnsw_instance.search(query_vectors[i].data(), k);
+    auto result = hnsw.searchKnn(query_vectors[i].data(), k);
+    while (!result.empty()) {
+      auto top = result.top();
+      results[i].push_back(top.second);
+      result.pop();
+    }
     if (i % 1000 == 0) {
       spdlog::info("Processed {} query vectors", i);
     }

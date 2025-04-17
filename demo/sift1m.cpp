@@ -10,7 +10,7 @@
 int main() {
 
   // read sift1m
-  std::filesystem::path root_path = "/Users/tangdonghai/projects/bnsw";
+  std::filesystem::path root_path = "/home/hayes/projects/bnsw";
   std::filesystem::path sift1m_path =
       root_path / "dataset/sift1m/sift_base.fvecs";
   std::ifstream sift1m_file(sift1m_path, std::ios::binary);
