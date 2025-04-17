@@ -1,5 +1,6 @@
 #include "adsampling.hpp"
 #include "dist_alg/l2_distance.hpp"
+#include "utils.hpp"
 #include <algorithm>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -13,19 +14,25 @@
 
 void runAdSamplingBenchmark(int dim, int topK,
                             const std::vector<std::vector<float>> &data,
-                            const std::vector<float> &query) {
+                            const std::vector<float> &query,
+                            const Eigen::MatrixXf &matrix) {
   std::priority_queue<std::pair<float, int>> pq;
   L2Distance<float> l2_distance;
-
+  bnsw::AdSampling<float> ad_sampling(dim);
+  ad_sampling.set_orthogonal_matrix(&matrix);
+  float threshold = std::numeric_limits<float>::max();
+  float distance = 0.0;
   for (auto i = 0U; i < data.size(); ++i) {
+    if (!ad_sampling.above_threshold(data[i].data(), query.data(), threshold,
+                                     distance)) {
+      if (pq.size() < static_cast<uint32_t>(topK)) {
+        pq.push({distance, i});
 
-    float distance = l2_distance.distance(query.data(), data[i].data(), dim);
-    if (pq.size() < static_cast<uint32_t>(topK)) {
-      pq.push({distance, i});
-
-    } else if (distance < pq.top().first) {
-      pq.pop();
-      pq.push({distance, i});
+      } else {
+        pq.pop();
+        pq.push({distance, i});
+        threshold = pq.top().first;
+      }
     }
   }
 }
@@ -78,30 +85,35 @@ TEST_CASE("AdSampling Bench", "[benchmark]") {
   std::vector<float> query_128;
   int data_size = 200000;
   int topK = 100;
+  auto matrix_128 = createOrthogonal(128);
   setup(data_128, query_128, 128, data_size);
   BENCHMARK("AdSampling 128") {
-    runAdSamplingBenchmark(128, topK, data_128, query_128);
+    runAdSamplingBenchmark(128, topK, data_128, query_128, matrix_128);
   };
 
   std::vector<std::vector<float>> data_256;
   std::vector<float> query_256;
   setup(data_256, query_256, 256, data_size);
+  auto matrix_256 = createOrthogonal(256);
   BENCHMARK("AdSampling 256") {
-    runAdSamplingBenchmark(256, topK, data_256, query_256);
+    runAdSamplingBenchmark(256, topK, data_256, query_256, matrix_256);
   };
 
   std::vector<std::vector<float>> data_512;
   std::vector<float> query_512;
+  auto matrix_512 = createOrthogonal(512);
   setup(data_512, query_512, 512, data_size);
+
   BENCHMARK("AdSampling 512") {
-    runAdSamplingBenchmark(512, topK, data_512, query_512);
+    runAdSamplingBenchmark(512, topK, data_512, query_512, matrix_512);
   };
 
   std::vector<std::vector<float>> data_1024;
   std::vector<float> query_1024;
+  auto matrix_1024 = createOrthogonal(1024);
   setup(data_1024, query_1024, 1024, data_size);
   BENCHMARK("AdSampling 1024") {
-    runAdSamplingBenchmark(1024, topK, data_1024, query_1024);
+    runAdSamplingBenchmark(1024, topK, data_1024, query_1024, matrix_1024);
   };
 }
 
