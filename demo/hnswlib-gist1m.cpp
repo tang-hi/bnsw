@@ -53,6 +53,7 @@ int main() {
   spdlog::info("HNSW index built in {} seconds, avg {} ms",
                build_duration.count(),
                build_duration.count() / num_vectors * 1000);
+  hnsw.saveIndex("gist_1m.bin");
 
   // read gist1m query
   std::filesystem::path gist1m_query_path =

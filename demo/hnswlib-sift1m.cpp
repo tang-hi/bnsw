@@ -53,7 +53,7 @@ int main() {
   spdlog::info("BNSW index built in {} seconds, avg {} ms",
                build_duration.count(),
                build_duration.count() / num_vectors * 1000);
-
+  hnsw.saveIndex("hnsw_1m.bin");
   // read sift1m query
   std::filesystem::path sift1m_query_path =
       root_path / "dataset/sift1m/sift_query.fvecs";

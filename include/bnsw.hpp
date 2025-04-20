@@ -448,9 +448,88 @@ private:
     ofs.close();
   }
 
-
   void loadIndex(const std::string &location) {
+    std::ifstream ifs(location, std::ios::binary);
+    if (!ifs) {
+      throw std::runtime_error("Failed to open file for reading");
+    }
+    ifs.read(reinterpret_cast<char *>(&dimension_), sizeof(dimension_));
+    ifs.read(reinterpret_cast<char *>(&M_), sizeof(M_));
+    ifs.read(reinterpret_cast<char *>(&M_max_), sizeof(M_max_));
+    ifs.read(reinterpret_cast<char *>(&M_max0_), sizeof(M_max0_));
+    ifs.read(reinterpret_cast<char *>(&ef_construction_),
+             sizeof(ef_construction_));
+    ifs.read(reinterpret_cast<char *>(&ef_search_), sizeof(ef_search_));
+    ifs.read(reinterpret_cast<char *>(&entry_point_), sizeof(entry_point_));
+    ifs.read(reinterpret_cast<char *>(&max_level_), sizeof(max_level_));
+    ifs.read(reinterpret_cast<char *>(&mult_), sizeof(mult_));
+    ifs.read(reinterpret_cast<char *>(&element_count_), sizeof(element_count_));
+    nodes_.clear();
+    nodes_.reserve(element_count_);
+    for (std::size_t i = 0; i < element_count_; ++i) {
+      int level;
+      ifs.read(reinterpret_cast<char *>(&level), sizeof(level));
+      T *point_data = new T[dimension_];
+      ifs.read(reinterpret_cast<char *>(point_data), dimension_ * sizeof(T));
+      InternalNode node(level, point_data, M_max_, M_max0_);
+      std::size_t size;
+      ifs.read(reinterpret_cast<char *>(&size), sizeof(size));
+      node.connections.resize(size);
+      for (auto &connections : node.connections) {
+        std::size_t size;
+        ifs.read(reinterpret_cast<char *>(&size), sizeof(size));
+        connections.resize(size);
+        ifs.read(reinterpret_cast<char *>(connections.data()),
+                 size * sizeof(id_t));
+      }
+      nodes_.push_back(node);
+    }
 
+    std::size_t id_to_data_size;
+    ifs.read(reinterpret_cast<char *>(&id_to_data_size),
+             sizeof(id_to_data_size));
+    id_to_data_.clear();
+    id_to_data_.reserve(id_to_data_size);
+    for (std::size_t i = 0; i < id_to_data_size; ++i) {
+      id_t id;
+      ifs.read(reinterpret_cast<char *>(&id), sizeof(id));
+      T *data = new T[dimension_];
+      ifs.read(reinterpret_cast<char *>(data), dimension_ * sizeof(T));
+      id_to_data_[id] = data;
+    }
+
+    std::size_t label_to_id_size;
+    ifs.read(reinterpret_cast<char *>(&label_to_id_size),
+             sizeof(label_to_id_size));
+    label_to_id_.clear();
+    label_to_id_.reserve(label_to_id_size);
+    for (std::size_t i = 0; i < label_to_id_size; ++i) {
+      label_t label;
+      ifs.read(reinterpret_cast<char *>(&label), sizeof(label));
+      id_t id;
+      ifs.read(reinterpret_cast<char *>(&id), sizeof(id));
+      label_to_id_[label] = id;
+    }
+    std::size_t id_to_label_size;
+    ifs.read(reinterpret_cast<char *>(&id_to_label_size),
+             sizeof(id_to_label_size));
+    id_to_label_.clear();
+    id_to_label_.reserve(id_to_label_size);
+    for (std::size_t i = 0; i < id_to_label_size; ++i) {
+      id_t id;
+      ifs.read(reinterpret_cast<char *>(&id), sizeof(id));
+      label_t label;
+      ifs.read(reinterpret_cast<char *>(&label), sizeof(label));
+      id_to_label_[id] = label;
+    }
+    std::size_t orthogonal_matrix_size;
+    ifs.read(reinterpret_cast<char *>(&orthogonal_matrix_size),
+             sizeof(orthogonal_matrix_size));
+    orthogonal_matrix_.resize(orthogonal_matrix_size);
+    ifs.read(reinterpret_cast<char *>(orthogonal_matrix_.data()),
+             orthogonal_matrix_size * sizeof(float));
+    sampler_.set_orthogonal_matrix(&orthogonal_matrix_);
+    ifs.close();
   }
 
 private:
