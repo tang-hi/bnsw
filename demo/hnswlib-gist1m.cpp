@@ -45,6 +45,9 @@ int main() {
       spdlog::info("Added {} vectors", i);
     }
   }
+  std::filesystem::path save_path = root_path / "dataset/gist/hnsw_index.bin";
+  hnsw.saveIndex(save_path.string());
+
   auto build_end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> build_duration = build_end - build_start;
   spdlog::info("HNSW index built in {} seconds, avg {} ms",
