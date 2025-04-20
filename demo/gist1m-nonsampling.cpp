@@ -7,18 +7,14 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <vector>
 int main(int argc, char *argv[]) {
-
-  int ef_search_value = 1500;
-  if (argc == 2) {
-    ef_search_value = std::stoi(argv[1]);
-    if (ef_search_value <= 0) {
-      std::cerr << "Error: ef_search_value must be a positive integer."
-                << std::endl;
-      return 1;
-    }
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " <ef_value>" << std::endl;
+    return 1;
   }
 
+  int ef = std::stoi(argv[1]);
 
   // read gist1m
   std::filesystem::path root_path = "/home/hayes/projects/bnsw";
@@ -46,12 +42,12 @@ int main(int argc, char *argv[]) {
   //                    dim * sizeof(float));
   // }
 
-  // // Close the file
+  // Close the file
   gist1m_file.close();
   // spdlog::info("Read {} vectors of dimension {} from {}", num_vectors, dim,
   //              gist1m_path.string());
-  bnsw::bnsw<float, L2Distance, bnsw::AdSampling> bnsw_instance(
-      dim, 24, 500, ef_search_value);
+  bnsw::bnsw<float, L2Distance, bnsw::NonSampling> bnsw_instance(dim, 24, 500,
+                                                                 ef);
   // auto build_start = std::chrono::high_resolution_clock::now();
   // spdlog::info("Building BNSW index...");
   // for (int i = 0; i < num_vectors; ++i) {
@@ -151,6 +147,5 @@ int main(int argc, char *argv[]) {
   }
   double recall_rate =
       static_cast<double>(total_recall) / (num_query_vectors * k);
-  spdlog::info("Recall rate: {:.2f}%", recall_rate * 100);
-  spdlog::info("early stop: {}", bnsw_instance.getEarlyStopCount());
+  spdlog::info("ef Recall rate: {:.2f}%", recall_rate * 100);
 }

@@ -73,7 +73,7 @@ TEST_CASE("AdSampling Test", "[predict]") {
            i});
     } else {
       threshold = pq.top().first;
-      float distance;
+      float distance = 0.0f;
       if (!adsampling.above_threshold(transformed_query.data(), data[i].data(),
                                       threshold, distance)) {
         pq.pop();

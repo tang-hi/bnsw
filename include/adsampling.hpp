@@ -50,6 +50,16 @@ public:
     return result; // Return the new pointer
   }
 
+  // The hypothesis testing checks whether \sqrt{D/d} dis' > (1 +  epsilon0 /
+  // \sqrt{d}) * r. We equivalently check whether dis' > \sqrt{d/D} * (1 +
+  // epsilon0 / \sqrt{d}) * r.
+  inline float ratio(const int &D, const int &i) const {
+    if (i == D)
+      return 1.0;
+    return 1.0 * i / D * (1.0 + eps0 / std::sqrt(i)) *
+           (1.0 + eps0 / std::sqrt(i));
+  }
+
   bool above_threshold(const T *a, const T *b, float threshold,
                        float &estimate) const {
     if (dimension < batch) {
@@ -58,28 +68,29 @@ public:
     }
     estimate = 0.0f;
     int i = 0;
-    for (; i < dimension / batch; ++i) {
+    for (; i < (dimension / batch) - 1; ++i) {
       const auto *a_ptr = a + i * batch;
       const auto *b_ptr = b + i * batch;
       estimate += distance_algorithm.distance(a_ptr, b_ptr, batch);
       auto current_dimension = (i + 1) * batch;
       double r = r_threshold_factors[i];
-      if (current_dimension < dimension && estimate > threshold * r) {
+      if (estimate >= threshold * r) {
         early_stop_count += 1;
         estimate = estimate * dimension / current_dimension;
         return true;
       }
-
-      if (i == dimension / batch - 1) {
-        // Handle the last batch
-        int remaining_dimension = dimension - (i + 1) * batch;
-        estimate += distance_algorithm.distance(
-            a + (i + 1) * batch, b + (i + 1) * batch, remaining_dimension);
-      }
     }
-
-    return estimate > threshold;
+    int remaining_dimension = dimension - i * batch;
+    if (remaining_dimension > 0) {
+      const auto *a_ptr = a + i * batch;
+      const auto *b_ptr = b + i * batch;
+      estimate +=
+          distance_algorithm.distance(a_ptr, b_ptr, remaining_dimension);
+    }
+    return estimate >= threshold;
   }
+
+  int get_early_stop_count() const { return early_stop_count; }
 
 public:
   mutable int early_stop_count{0};

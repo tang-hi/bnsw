@@ -2,16 +2,27 @@
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/matchers/catch_matchers_floating_point.hpp"
 #include "dist_alg/l2_distance.hpp"
+#include "nonsampling.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <queue>
 #include <random>
 #include <vector>
+#include <cstdio> // For std::remove
+#include <unordered_set>
 
 // Test distance function for 1D points
 template <typename T> struct TestDistance {
-  float distance(const T *a, const T *b, int) const {
+  float distance(const T *a, const T *b, int dim) const {
+    // Explicitly check the dimension for safety in this test context
+    if (dim != 1) {
+        throw std::runtime_error("TestDistance (designed for dim=1) called with dim=" + std::to_string(dim));
+    }
+    // Ensure pointers are not null before dereferencing
+    if (!a || !b) {
+        throw std::runtime_error("TestDistance called with null pointer(s)");
+    }
     return std::abs(a[0] - b[0]);
   }
 };
@@ -59,7 +70,7 @@ struct BnswTestAccessor {
                           std::vector<typename bnsw<T, DA, SA>::Neighbor>,
                           std::greater<typename bnsw<T, DA, SA>::Neighbor>>
           &candidates_min_heap,
-      size_t M, const int level) {
+      size_t M, int level) {
     return index.selectAndConnectNeighbors(current_id, candidates_min_heap, M,
                                            level);
   }
@@ -397,4 +408,139 @@ TEST_CASE("Bnsw search functionality", "[search-recall]") {
   }
 }
 
+TEST_CASE("Bnsw save and load functionality", "[save][load]") {
+  const int dim = 1;
+  const size_t M = 8;
+  const size_t ef_construction = 20;
+  const size_t ef_search = 10;
+  const int seed = 123;
+  const int element_count = 100;
+  const std::string temp_index_file = "temp_bnsw_index.bin";
+
+  // 1. Create and populate the original index
+  bnsw<float, TestDistance> original_index(dim, M, ef_construction, ef_search,
+                                           seed);
+  std::vector<float> points;
+  points.reserve(element_count);
+  std::vector<uint32_t> labels;
+  labels.reserve(element_count);
+
+  std::default_random_engine generator(seed);
+  std::uniform_real_distribution<float> distribution(0.0, 100.0);
+
+  for (int i = 0; i < element_count; ++i) {
+    points.push_back(distribution(generator));
+    labels.push_back(i);
+    REQUIRE(original_index.addPoint(&points.back(), labels.back()));
+  }
+
+  // 2. Save the original index
+  REQUIRE_NOTHROW(original_index.saveIndex(temp_index_file));
+
+  // 3. Create a new index and load from the file
+  // Initialize with parameters, as default constructor is deleted.
+  bnsw<float, TestDistance> loaded_index(dim, M, ef_construction, ef_search, seed);
+  REQUIRE_NOTHROW(loaded_index.loadIndex(temp_index_file));
+
+  // 4. Verify the loaded index state (parameters)
+  // Note: Direct comparison of private members isn't feasible without more
+  // accessors. We'll verify through behavior (search).
+
+  // 5. Verify search results are consistent
+  const int search_query_count = 10;
+  const uint32_t k = 5;
+  for (int i = 0; i < search_query_count; ++i) {
+    auto query_index =
+        std::uniform_int_distribution<>(0, points.size() - 1)(generator);
+    float query = points[query_index];
+
+    auto original_result = original_index.search(&query, k);
+    auto loaded_result = loaded_index.search(&query, k);
+
+    REQUIRE(original_result.size() == k);
+    REQUIRE(loaded_result.size() == k);
+
+    // Convert results to sets for easier comparison (order might differ slightly
+    // due to floating point nuances in distance calcs during load/save, though
+    // unlikely here)
+    std::unordered_set<uint32_t> original_set(original_result.begin(),
+                                              original_result.end());
+    std::unordered_set<uint32_t> loaded_set(loaded_result.begin(),
+                                            loaded_result.end());
+
+    REQUIRE(original_set == loaded_set);
+  }
+  REQUIRE(original_index == loaded_index);
+
+  // 6. Clean up the temporary file
+  std::remove(temp_index_file.c_str());
+}
+
+TEST_CASE("Bnsw Nonsampling save and load functionality", "[save][load]") {
+  const int dim = 1;
+  const size_t M = 8;
+  const size_t ef_construction = 20;
+  const size_t ef_search = 10;
+  const int seed = 123;
+  const int element_count = 100;
+  const std::string temp_index_file = "temp_bnsw_index.bin";
+
+  // 1. Create and populate the original index
+  bnsw<float, TestDistance, NonSampling> original_index(dim, M, ef_construction, ef_search,
+                                           seed);
+  std::vector<float> points;
+  points.reserve(element_count);
+  std::vector<uint32_t> labels;
+  labels.reserve(element_count);
+
+  std::default_random_engine generator(seed);
+  std::uniform_real_distribution<float> distribution(0.0, 100.0);
+
+  for (int i = 0; i < element_count; ++i) {
+    points.push_back(distribution(generator));
+    labels.push_back(i);
+    REQUIRE(original_index.addPoint(&points.back(), labels.back()));
+  }
+
+  // 2. Save the original index
+  REQUIRE_NOTHROW(original_index.saveIndex(temp_index_file));
+
+  // 3. Create a new index and load from the file
+  // Initialize with parameters, as default constructor is deleted.
+  bnsw<float, TestDistance, NonSampling> loaded_index(dim, M, ef_construction, ef_search, seed);
+  REQUIRE_NOTHROW(loaded_index.loadIndex(temp_index_file));
+
+  // 4. Verify the loaded index state (parameters)
+  // Note: Direct comparison of private members isn't feasible without more
+  // accessors. We'll verify through behavior (search).
+
+  // 5. Verify search results are consistent
+  const int search_query_count = 10;
+  const uint32_t k = 5;
+  for (int i = 0; i < search_query_count; ++i) {
+    auto query_index =
+        std::uniform_int_distribution<>(0, points.size() - 1)(generator);
+    float query = points[query_index];
+
+    auto original_result = original_index.search(&query, k);
+    auto loaded_result = loaded_index.search(&query, k);
+
+    REQUIRE(original_result.size() == k);
+    REQUIRE(loaded_result.size() == k);
+
+    // Convert results to sets for easier comparison (order might differ slightly
+    // due to floating point nuances in distance calcs during load/save, though
+    // unlikely here)
+    std::unordered_set<uint32_t> original_set(original_result.begin(),
+                                              original_result.end());
+    std::unordered_set<uint32_t> loaded_set(loaded_result.begin(),
+                                            loaded_result.end());
+
+    REQUIRE(original_set == loaded_set);
+  }
+  REQUIRE(original_index == loaded_index);
+
+  // 6. Clean up the temporary file
+  std::remove(temp_index_file.c_str());
+}
 }; // namespace bnsw

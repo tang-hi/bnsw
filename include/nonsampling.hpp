@@ -26,8 +26,15 @@ public:
   bool above_threshold(const T *a, const T *b, float threshold,
                        float &estimate) const {
     estimate = distance_algorithm.distance(a, b, dimension);
-    return estimate > threshold;
+    return estimate >= threshold;
   }
+
+  void set_orthogonal_matrix(const Eigen::MatrixXf *) {
+    return;
+  }
+
+
+  int get_early_stop_count() const { return 0; }
 
 private:
   int dimension{0};

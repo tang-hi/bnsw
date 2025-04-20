@@ -2,7 +2,6 @@
 eigen/3.4.0
 spdlog/1.15.0
 fmt/11.0.2
-roaring/4.2.1
 [generators]
 CMakeDeps
 CMakeToolchain

@@ -52,6 +52,26 @@ public:
         connections[0].reserve(M_max0);
       }
     }
+
+    // Equality comparison for InternalNode (basic structure)
+    bool operator==(const InternalNode &other) const {
+      if (level != other.level ||
+          connections.size() != other.connections.size()) {
+        return false;
+      }
+      // Compare connections level by level
+      for (size_t i = 0; i < connections.size(); ++i) {
+        // Sort connection lists before comparing for order independence
+        auto sorted_connections1 = connections[i];
+        auto sorted_connections2 = other.connections[i];
+        std::sort(sorted_connections1.begin(), sorted_connections1.end());
+        std::sort(sorted_connections2.begin(), sorted_connections2.end());
+        if (sorted_connections1 != sorted_connections2) {
+          return false;
+        }
+      }
+      return true;
+    }
   };
 
   struct Neighbor {
@@ -156,11 +176,12 @@ public:
     return addPoint(point, label, -1);
   }
 
+  int getEarlyStopCount() const { return sampler_.get_early_stop_count(); }
   auto search(const void *query, std::size_t k) const -> std::vector<label_t> {
     const T *query_typed = static_cast<const T *>(query);
-    if constexpr (need_convert) {
-      sampler_.convert(query_typed);
-    }
+    // if constexpr (need_convert) {
+    //   sampler_.convert(query_typed);
+    // }
     id_t current_entry_point = entry_point_;
     int current_max_level = max_level_;
 
@@ -179,8 +200,11 @@ public:
           if (neighbor_id >= nodes_.size()) {
             throw std::runtime_error("Invalid neighbor ID");
           }
-          float dist = getDistance(query_typed, neighbor_id);
-          if (dist < min_distance) {
+          // float dist = getDistance(query_typed, neighbor_id);
+          float dist = 0.0f;
+          if (!sampler_.above_threshold(query_typed,
+                                        nodes_[neighbor_id].point_data,
+                                        min_distance, dist)) {
             min_distance = dist;
             nearest_node = neighbor_id;
             changed = true;
@@ -205,6 +229,197 @@ public:
 
     return results;
   }
+
+  void saveIndex(const std::string &location) {
+    std::ofstream ofs(location, std::ios::binary);
+    if (!ofs) {
+      throw std::runtime_error("Failed to open file for writing");
+    }
+    ofs.write(reinterpret_cast<const char *>(&dimension_), sizeof(dimension_));
+    ofs.write(reinterpret_cast<const char *>(&M_), sizeof(M_));
+    ofs.write(reinterpret_cast<const char *>(&M_max_), sizeof(M_max_));
+    ofs.write(reinterpret_cast<const char *>(&M_max0_), sizeof(M_max0_));
+    ofs.write(reinterpret_cast<const char *>(&ef_construction_),
+              sizeof(ef_construction_));
+    ofs.write(reinterpret_cast<const char *>(&ef_search_), sizeof(ef_search_));
+    ofs.write(reinterpret_cast<const char *>(&entry_point_),
+              sizeof(entry_point_));
+    ofs.write(reinterpret_cast<const char *>(&max_level_), sizeof(max_level_));
+    ofs.write(reinterpret_cast<const char *>(&mult_), sizeof(mult_));
+    ofs.write(reinterpret_cast<const char *>(&element_count_),
+              sizeof(element_count_));
+    for (const auto &node : nodes_) {
+      int level = node.level;
+      ofs.write(reinterpret_cast<const char *>(&level), sizeof(level));
+      ofs.write(reinterpret_cast<const char *>(node.point_data),
+                dimension_ * sizeof(T));
+      std::size_t size = node.connections.size();
+      ofs.write(reinterpret_cast<const char *>(&size), sizeof(size));
+      for (const auto &connections : node.connections) {
+        std::size_t size = connections.size();
+        ofs.write(reinterpret_cast<const char *>(&size), sizeof(size));
+        ofs.write(reinterpret_cast<const char *>(connections.data()),
+                  size * sizeof(id_t));
+      }
+    }
+    std::size_t id_to_data_size = id_to_data_.size();
+    ofs.write(reinterpret_cast<const char *>(&id_to_data_size),
+              sizeof(id_to_data_size));
+    for (const auto &[id, data] : id_to_data_) {
+      ofs.write(reinterpret_cast<const char *>(&id), sizeof(id));
+      ofs.write(reinterpret_cast<const char *>(data), dimension_ * sizeof(T));
+    }
+    std::size_t label_to_id_size = label_to_id_.size();
+    ofs.write(reinterpret_cast<const char *>(&label_to_id_size),
+              sizeof(label_to_id_size));
+    for (const auto &[label, id] : label_to_id_) {
+      ofs.write(reinterpret_cast<const char *>(&label), sizeof(label));
+      ofs.write(reinterpret_cast<const char *>(&id), sizeof(id));
+    }
+    std::size_t id_to_label_size = id_to_label_.size();
+    ofs.write(reinterpret_cast<const char *>(&id_to_label_size),
+              sizeof(id_to_label_size));
+    for (const auto &[id, label] : id_to_label_) {
+      ofs.write(reinterpret_cast<const char *>(&id), sizeof(id));
+      ofs.write(reinterpret_cast<const char *>(&label), sizeof(label));
+    }
+    std::size_t rows = orthogonal_matrix_.rows();
+    std::size_t cols = orthogonal_matrix_.cols();
+    ofs.write(reinterpret_cast<const char *>(&rows), sizeof(rows));
+    ofs.write(reinterpret_cast<const char *>(&cols), sizeof(cols));
+    std::size_t orthogonal_matrix_size = orthogonal_matrix_.size();
+    ofs.write(reinterpret_cast<const char *>(orthogonal_matrix_.data()),
+              orthogonal_matrix_size * sizeof(float));
+    ofs.close();
+  }
+
+  void loadIndex(const std::string &location) {
+    std::ifstream ifs(location, std::ios::binary);
+    if (!ifs) {
+      throw std::runtime_error("Failed to open file for reading");
+    }
+    ifs.read(reinterpret_cast<char *>(&dimension_), sizeof(dimension_));
+    ifs.read(reinterpret_cast<char *>(&M_), sizeof(M_));
+    ifs.read(reinterpret_cast<char *>(&M_max_), sizeof(M_max_));
+    ifs.read(reinterpret_cast<char *>(&M_max0_), sizeof(M_max0_));
+    ifs.read(reinterpret_cast<char *>(&ef_construction_),
+             sizeof(ef_construction_));
+    std::size_t ef_search;
+    ifs.read(reinterpret_cast<char *>(&ef_search), sizeof(ef_search));
+    ifs.read(reinterpret_cast<char *>(&entry_point_), sizeof(entry_point_));
+    ifs.read(reinterpret_cast<char *>(&max_level_), sizeof(max_level_));
+    ifs.read(reinterpret_cast<char *>(&mult_), sizeof(mult_));
+    ifs.read(reinterpret_cast<char *>(&element_count_), sizeof(element_count_));
+    nodes_.clear();
+    nodes_.reserve(element_count_);
+    for (std::size_t i = 0; i < element_count_; ++i) {
+      int level;
+      ifs.read(reinterpret_cast<char *>(&level), sizeof(level));
+      T *point_data = new T[dimension_];
+      ifs.read(reinterpret_cast<char *>(point_data), dimension_ * sizeof(T));
+      InternalNode node(level, point_data, M_max_, M_max0_);
+      std::size_t size;
+      ifs.read(reinterpret_cast<char *>(&size), sizeof(size));
+      node.connections.resize(size);
+      for (auto &connections : node.connections) {
+        std::size_t size;
+        ifs.read(reinterpret_cast<char *>(&size), sizeof(size));
+        connections.resize(size);
+        ifs.read(reinterpret_cast<char *>(connections.data()),
+                 size * sizeof(id_t));
+      }
+      nodes_.push_back(node);
+    }
+
+    std::size_t id_to_data_size;
+    ifs.read(reinterpret_cast<char *>(&id_to_data_size),
+             sizeof(id_to_data_size));
+    id_to_data_.clear();
+    id_to_data_.reserve(id_to_data_size);
+    for (std::size_t i = 0; i < id_to_data_size; ++i) {
+      id_t id;
+      ifs.read(reinterpret_cast<char *>(&id), sizeof(id));
+      T *data = new T[dimension_];
+      ifs.read(reinterpret_cast<char *>(data), dimension_ * sizeof(T));
+      id_to_data_[id] = data;
+    }
+
+    std::size_t label_to_id_size;
+    ifs.read(reinterpret_cast<char *>(&label_to_id_size),
+             sizeof(label_to_id_size));
+    label_to_id_.clear();
+    label_to_id_.reserve(label_to_id_size);
+    for (std::size_t i = 0; i < label_to_id_size; ++i) {
+      label_t label;
+      ifs.read(reinterpret_cast<char *>(&label), sizeof(label));
+      id_t id;
+      ifs.read(reinterpret_cast<char *>(&id), sizeof(id));
+      label_to_id_[label] = id;
+    }
+    std::size_t id_to_label_size;
+    ifs.read(reinterpret_cast<char *>(&id_to_label_size),
+             sizeof(id_to_label_size));
+    id_to_label_.clear();
+    id_to_label_.reserve(id_to_label_size);
+    for (std::size_t i = 0; i < id_to_label_size; ++i) {
+      id_t id;
+      ifs.read(reinterpret_cast<char *>(&id), sizeof(id));
+      label_t label;
+      ifs.read(reinterpret_cast<char *>(&label), sizeof(label));
+      id_to_label_[id] = label;
+    }
+    std::size_t rows, cols;
+    ifs.read(reinterpret_cast<char *>(&rows), sizeof(rows));
+    ifs.read(reinterpret_cast<char *>(&cols), sizeof(cols));
+    orthogonal_matrix_.resize(rows, cols);
+    std::size_t orthogonal_matrix_size = rows * cols;
+    ifs.read(reinterpret_cast<char *>(orthogonal_matrix_.data()),
+             orthogonal_matrix_size * sizeof(float));
+    sampler_.set_orthogonal_matrix(&orthogonal_matrix_);
+    ifs.close();
+  }
+
+  // Equality operator
+  bool operator==(const bnsw &other) const {
+    // Compare parameters
+    if (dimension_ != other.dimension_ || M_ != other.M_ ||
+        M_max_ != other.M_max_ || M_max0_ != other.M_max0_ ||
+        ef_construction_ != other.ef_construction_ ||
+        ef_search_ != other.ef_search_ ||
+        std::abs(mult_ - other.mult_) >
+            1e-9) { // Use tolerance for float comparison
+      return false;
+    }
+
+    // Compare state
+    if (entry_point_ != other.entry_point_ || max_level_ != other.max_level_ ||
+        element_count_.load() != other.element_count_.load()) { // Load atomic
+      return false;
+    }
+
+    // Compare main data structures
+    // Note: Comparing nodes_ and id_to_data_ involves pointer comparison
+    // for the actual data points, not deep data comparison.
+    if (nodes_.size() != other.nodes_.size() ||
+        id_to_data_.size() !=
+            other.id_to_data_.size() || // Check sizes first for maps
+        label_to_id_ != other.label_to_id_ ||
+        id_to_label_ != other.id_to_label_ ||
+        orthogonal_matrix_ != other.orthogonal_matrix_) { // Eigen operator==
+      return false;
+    }
+
+    // Element-wise comparison for nodes_ (uses InternalNode::operator==)
+    if (nodes_ != other.nodes_) {
+      return false;
+    }
+
+    // Skipping comparison of random generator, distance algo, sampler instances
+    return true;
+  }
+
+  // Inequality operator (implemented in terms of operator==)
+  bool operator!=(const bnsw &other) const { return !(*this == other); }
 
 private:
   float getDistance(id_t id1, id_t id2) const {
@@ -309,7 +524,7 @@ private:
     std::priority_queue<Neighbor, std::vector<Neighbor>, std::greater<Neighbor>>
         candidates_min_heap;
     std::priority_queue<Neighbor> results_max_heap;
-    std::unordered_set<id_t> visited;
+    visited.resize(nodes_.size(), 0);
 
     if (entry_point_id == INVALID_ID || entry_point_id >= nodes_.size()) {
       return candidates_min_heap;
@@ -322,7 +537,7 @@ private:
     float entry_dist = getDistance(query, entry_point_id);
     candidates_min_heap.emplace(entry_point_id, entry_dist);
     results_max_heap.emplace(entry_point_id, entry_dist);
-    visited.insert(entry_point_id);
+    visited[entry_point_id] = 1;
 
     while (!candidates_min_heap.empty()) {
       Neighbor current_best_candidate = candidates_min_heap.top();
@@ -339,33 +554,23 @@ private:
 
       float lower_bound = results_max_heap.top().distance;
       for (id_t neighbor_id : neighbors) {
-        if (visited.find(neighbor_id) == visited.end()) {
-          visited.insert(neighbor_id);
+        if (visited[neighbor_id] == 0) {
+          visited[neighbor_id] = 1;
           if (results_max_heap.size() < ef) {
             float dist = getDistance(query, neighbor_id);
             candidates_min_heap.emplace(neighbor_id, dist);
             results_max_heap.emplace(neighbor_id, dist);
             lower_bound = results_max_heap.top().distance;
           } else if (float dist = 0.0; !sampler_.above_threshold(
-                         query, id_to_data_.at(neighbor_id), lower_bound,
+                         query, nodes_[neighbor_id].point_data, lower_bound,
                          dist)) {
             candidates_min_heap.emplace(neighbor_id, dist);
             results_max_heap.emplace(neighbor_id, dist);
             lower_bound = results_max_heap.top().distance;
+            if (results_max_heap.size() > ef) {
+              results_max_heap.pop();
+            }
           }
-
-          if (results_max_heap.size() > ef) {
-            results_max_heap.pop();
-          }
-          // if (results_max_heap.size() < ef ||
-          //     dist < results_max_heap.top().distance) {
-          //   candidates_min_heap.emplace(neighbor_id, dist);
-          //   results_max_heap.emplace(neighbor_id, dist);
-
-          //   if (results_max_heap.size() > ef) {
-          //     results_max_heap.pop();
-          //   }
-          // }
         }
       }
     }
@@ -376,6 +581,8 @@ private:
       final_results_min_heap.push(results_max_heap.top());
       results_max_heap.pop();
     }
+    visited.clear();
+    visited.resize(nodes_.size(), 0);
 
     return final_results_min_heap;
   }
@@ -384,152 +591,6 @@ private:
     std::uniform_real_distribution<> distribution(0.0, 1.0);
     double r = -std::log(distribution(level_generator_)) * reverse_size;
     return static_cast<int>(r);
-  }
-
-  void saveIndex(const std::string &location) {
-    std::ofstream ofs(location, std::ios::binary);
-    if (!ofs) {
-      throw std::runtime_error("Failed to open file for writing");
-    }
-    ofs.write(reinterpret_cast<const char *>(&dimension_), sizeof(dimension_));
-    ofs.write(reinterpret_cast<const char *>(&M_), sizeof(M_));
-    ofs.write(reinterpret_cast<const char *>(&M_max_), sizeof(M_max_));
-    ofs.write(reinterpret_cast<const char *>(&M_max0_), sizeof(M_max0_));
-    ofs.write(reinterpret_cast<const char *>(&ef_construction_),
-              sizeof(ef_construction_));
-    ofs.write(reinterpret_cast<const char *>(&ef_search_), sizeof(ef_search_));
-    ofs.write(reinterpret_cast<const char *>(&entry_point_),
-              sizeof(entry_point_));
-    ofs.write(reinterpret_cast<const char *>(&max_level_), sizeof(max_level_));
-    ofs.write(reinterpret_cast<const char *>(&mult_), sizeof(mult_));
-    ofs.write(reinterpret_cast<const char *>(&element_count_),
-              sizeof(element_count_));
-    for (const auto &node : nodes_) {
-      int level = node.level;
-      ofs.write(reinterpret_cast<const char *>(&level), sizeof(level));
-      ofs.write(reinterpret_cast<const char *>(node.point_data),
-                dimension_ * sizeof(T));
-      std::size_t size = node.connections.size();
-      ofs.write(reinterpret_cast<const char *>(&size), sizeof(size));
-      for (const auto &connections : node.connections) {
-        std::size_t size = connections.size();
-        ofs.write(reinterpret_cast<const char *>(&size), sizeof(size));
-        ofs.write(reinterpret_cast<const char *>(connections.data()),
-                  size * sizeof(id_t));
-      }
-    }
-    std::size_t id_to_data_size = id_to_data_.size();
-    ofs.write(reinterpret_cast<const char *>(&id_to_data_size),
-              sizeof(id_to_data_size));
-    for (const auto &[id, data] : id_to_data_) {
-      ofs.write(reinterpret_cast<const char *>(&id), sizeof(id));
-      ofs.write(reinterpret_cast<const char *>(data), dimension_ * sizeof(T));
-    }
-    std::size_t label_to_id_size = label_to_id_.size();
-    ofs.write(reinterpret_cast<const char *>(&label_to_id_size),
-              sizeof(label_to_id_size));
-    for (const auto &[label, id] : label_to_id_) {
-      ofs.write(reinterpret_cast<const char *>(&label), sizeof(label));
-      ofs.write(reinterpret_cast<const char *>(&id), sizeof(id));
-    }
-    std::size_t id_to_label_size = id_to_label_.size();
-    ofs.write(reinterpret_cast<const char *>(&id_to_label_size),
-              sizeof(id_to_label_size));
-    for (const auto &[id, label] : id_to_label_) {
-      ofs.write(reinterpret_cast<const char *>(&id), sizeof(id));
-      ofs.write(reinterpret_cast<const char *>(&label), sizeof(label));
-    }
-
-    std::size_t orthogonal_matrix_size = orthogonal_matrix_.size();
-    ofs.write(reinterpret_cast<const char *>(&orthogonal_matrix_size),
-              sizeof(orthogonal_matrix_size));
-    ofs.write(reinterpret_cast<const char *>(orthogonal_matrix_.data()),
-              orthogonal_matrix_size * sizeof(float));
-    ofs.close();
-  }
-
-  void loadIndex(const std::string &location) {
-    std::ifstream ifs(location, std::ios::binary);
-    if (!ifs) {
-      throw std::runtime_error("Failed to open file for reading");
-    }
-    ifs.read(reinterpret_cast<char *>(&dimension_), sizeof(dimension_));
-    ifs.read(reinterpret_cast<char *>(&M_), sizeof(M_));
-    ifs.read(reinterpret_cast<char *>(&M_max_), sizeof(M_max_));
-    ifs.read(reinterpret_cast<char *>(&M_max0_), sizeof(M_max0_));
-    ifs.read(reinterpret_cast<char *>(&ef_construction_),
-             sizeof(ef_construction_));
-    ifs.read(reinterpret_cast<char *>(&ef_search_), sizeof(ef_search_));
-    ifs.read(reinterpret_cast<char *>(&entry_point_), sizeof(entry_point_));
-    ifs.read(reinterpret_cast<char *>(&max_level_), sizeof(max_level_));
-    ifs.read(reinterpret_cast<char *>(&mult_), sizeof(mult_));
-    ifs.read(reinterpret_cast<char *>(&element_count_), sizeof(element_count_));
-    nodes_.clear();
-    nodes_.reserve(element_count_);
-    for (std::size_t i = 0; i < element_count_; ++i) {
-      int level;
-      ifs.read(reinterpret_cast<char *>(&level), sizeof(level));
-      T *point_data = new T[dimension_];
-      ifs.read(reinterpret_cast<char *>(point_data), dimension_ * sizeof(T));
-      InternalNode node(level, point_data, M_max_, M_max0_);
-      std::size_t size;
-      ifs.read(reinterpret_cast<char *>(&size), sizeof(size));
-      node.connections.resize(size);
-      for (auto &connections : node.connections) {
-        std::size_t size;
-        ifs.read(reinterpret_cast<char *>(&size), sizeof(size));
-        connections.resize(size);
-        ifs.read(reinterpret_cast<char *>(connections.data()),
-                 size * sizeof(id_t));
-      }
-      nodes_.push_back(node);
-    }
-
-    std::size_t id_to_data_size;
-    ifs.read(reinterpret_cast<char *>(&id_to_data_size),
-             sizeof(id_to_data_size));
-    id_to_data_.clear();
-    id_to_data_.reserve(id_to_data_size);
-    for (std::size_t i = 0; i < id_to_data_size; ++i) {
-      id_t id;
-      ifs.read(reinterpret_cast<char *>(&id), sizeof(id));
-      T *data = new T[dimension_];
-      ifs.read(reinterpret_cast<char *>(data), dimension_ * sizeof(T));
-      id_to_data_[id] = data;
-    }
-
-    std::size_t label_to_id_size;
-    ifs.read(reinterpret_cast<char *>(&label_to_id_size),
-             sizeof(label_to_id_size));
-    label_to_id_.clear();
-    label_to_id_.reserve(label_to_id_size);
-    for (std::size_t i = 0; i < label_to_id_size; ++i) {
-      label_t label;
-      ifs.read(reinterpret_cast<char *>(&label), sizeof(label));
-      id_t id;
-      ifs.read(reinterpret_cast<char *>(&id), sizeof(id));
-      label_to_id_[label] = id;
-    }
-    std::size_t id_to_label_size;
-    ifs.read(reinterpret_cast<char *>(&id_to_label_size),
-             sizeof(id_to_label_size));
-    id_to_label_.clear();
-    id_to_label_.reserve(id_to_label_size);
-    for (std::size_t i = 0; i < id_to_label_size; ++i) {
-      id_t id;
-      ifs.read(reinterpret_cast<char *>(&id), sizeof(id));
-      label_t label;
-      ifs.read(reinterpret_cast<char *>(&label), sizeof(label));
-      id_to_label_[id] = label;
-    }
-    std::size_t orthogonal_matrix_size;
-    ifs.read(reinterpret_cast<char *>(&orthogonal_matrix_size),
-             sizeof(orthogonal_matrix_size));
-    orthogonal_matrix_.resize(orthogonal_matrix_size);
-    ifs.read(reinterpret_cast<char *>(orthogonal_matrix_.data()),
-             orthogonal_matrix_size * sizeof(float));
-    sampler_.set_orthogonal_matrix(&orthogonal_matrix_);
-    ifs.close();
   }
 
 private:
@@ -550,6 +611,7 @@ private:
   std::unordered_map<id_t, const T *> id_to_data_;
   std::unordered_map<label_t, id_t> label_to_id_;
   std::unordered_map<id_t, label_t> id_to_label_;
+  mutable std::vector<id_t> visited;
 
   DistanceAlgorithm<T> dist_algo_{};
   SamplingAlgorithm<T, DistanceAlgorithm> sampler_;
