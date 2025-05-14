@@ -92,6 +92,10 @@ public:
 
   int get_early_stop_count() const { return early_stop_count; }
 
+  uint64_t get_distance_calc_count() const {
+    return distance_algorithm.get_distance_calc_count();
+  }
+
 public:
   mutable int early_stop_count{0};
 

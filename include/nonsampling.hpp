@@ -11,7 +11,7 @@ class NonSampling {
 public:
   explicit NonSampling(int dimension) : dimension(dimension) {}
 
-  static constexpr bool need_convert = true;
+  static constexpr bool need_convert = false;
 
   float distance(const T *a, const T *b) {
     return distance_algorithm.distance(a, b, dimension);
@@ -29,12 +29,13 @@ public:
     return estimate >= threshold;
   }
 
-  void set_orthogonal_matrix(const Eigen::MatrixXf *) {
-    return;
-  }
-
+  void set_orthogonal_matrix(const Eigen::MatrixXf *) { return; }
 
   int get_early_stop_count() const { return 0; }
+
+  uint64_t get_distance_calc_count() const {
+    return distance_algorithm.get_distance_calc_count();
+  }
 
 private:
   int dimension{0};

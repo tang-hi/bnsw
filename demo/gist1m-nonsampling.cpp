@@ -1,4 +1,3 @@
-#include "adsampling.hpp"
 #include "bnsw.hpp"
 #include "dist_alg/l2_distance.hpp"
 #include "nonsampling.hpp"
@@ -7,17 +6,16 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <unordered_set>
 #include <vector>
 int main(int argc, char *argv[]) {
-  if (argc != 2) {
-    std::cerr << "Usage: " << argv[0] << " <ef_value>" << std::endl;
-    return 1;
+  int ef = 1500; // Default ef value
+  if (argc == 2) {
+    ef = std::stoi(argv[1]);
   }
 
-  int ef = std::stoi(argv[1]);
-
   // read gist1m
-  std::filesystem::path root_path = "/home/hayes/projects/bnsw";
+  std::filesystem::path root_path = "/Users/tangdonghai/projects/bnsw";
   std::filesystem::path gist1m_path =
       root_path / "dataset/gist/gist_base.fvecs";
   std::ifstream gist1m_file(gist1m_path, std::ios::binary);
@@ -46,7 +44,7 @@ int main(int argc, char *argv[]) {
   gist1m_file.close();
   // spdlog::info("Read {} vectors of dimension {} from {}", num_vectors, dim,
   //              gist1m_path.string());
-  bnsw::bnsw<float, L2Distance, bnsw::NonSampling> bnsw_instance(dim, 24, 500,
+  bnsw::bnsw<float, L2Distance, bnsw::NonSampling> bnsw_instance(dim, 16, 500,
                                                                  ef);
   // auto build_start = std::chrono::high_resolution_clock::now();
   // spdlog::info("Building BNSW index...");
@@ -61,10 +59,13 @@ int main(int argc, char *argv[]) {
   // spdlog::info("BNSW index built in {} seconds, avg {} ms",
   //              build_duration.count(),
   //              build_duration.count() / num_vectors * 1000);
-  std::filesystem::path save_path =
-      root_path / "dataset/gist/bnsw_nonsampling_index.bin";
-  bnsw_instance.loadIndex(save_path.string());
+  // std::filesystem::path save_path =
+  //     root_path / "dataset/gist/bnsw_nonsampling_index.bin";
 
+  std::filesystem::path hnswlib_path = 
+    "/Users/tangdonghai/projects/ADSampling/data/gist/gist_ef500_M16.index";
+  bnsw_instance.loadhnswlibIndex(hnswlib_path.string());
+  spdlog::info("BNSW index loaded from {}", hnswlib_path.string());
   // read gist1m query
   std::filesystem::path gist1m_query_path =
       root_path / "dataset/gist/gist_query.fvecs";
@@ -148,4 +149,5 @@ int main(int argc, char *argv[]) {
   double recall_rate =
       static_cast<double>(total_recall) / (num_query_vectors * k);
   spdlog::info("ef Recall rate: {:.2f}%", recall_rate * 100);
+  spdlog::info("distance calc count: {}", bnsw_instance.getDistanceCalcCount());
 }

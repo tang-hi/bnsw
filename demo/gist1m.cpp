@@ -1,12 +1,13 @@
 #include "adsampling.hpp"
 #include "bnsw.hpp"
 #include "dist_alg/l2_distance.hpp"
-#include "nonsampling.hpp"
 #include "spdlog/spdlog.h"
+#include <Eigen/src/Core/Matrix.h>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <unordered_set>
 int main(int argc, char *argv[]) {
 
   int ef_search_value = 1500;
@@ -19,9 +20,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-
   // read gist1m
-  std::filesystem::path root_path = "/home/hayes/projects/bnsw";
+  std::filesystem::path root_path = "/Users/tangdonghai/projects/bnsw";
   std::filesystem::path gist1m_path =
       root_path / "dataset/gist/gist_base.fvecs";
   std::ifstream gist1m_file(gist1m_path, std::ios::binary);
@@ -34,13 +34,12 @@ int main(int argc, char *argv[]) {
   int dim = 0;
   gist1m_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
   // int num_vectors = 0;
-  // num_vectors = std::filesystem::file_size(gist1m_path) / (dim *
-  // sizeof(float));
+  // num_vectors = std::filesystem::file_size(gist1m_path) / (dim * sizeof(float));
 
   // // Read the vectors
-  // std::vector<std::vector<float>> vectors(num_vectors,
-  // std::vector<float>(dim)); gist1m_file.seekg(0, std::ios::beg); for (int i =
-  // 0; i < num_vectors; ++i) {
+  // std::vector<std::vector<float>> vectors(num_vectors, std::vector<float>(dim));
+  // gist1m_file.seekg(0, std::ios::beg);
+  // for (int i = 0; i < num_vectors; ++i) {
   //   gist1m_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
   //   gist1m_file.read(reinterpret_cast<char *>(vectors[i].data()),
   //                    dim * sizeof(float));
@@ -49,9 +48,9 @@ int main(int argc, char *argv[]) {
   // // Close the file
   gist1m_file.close();
   // spdlog::info("Read {} vectors of dimension {} from {}", num_vectors, dim,
-  //              gist1m_path.string());
+              //  gist1m_path.string());
   bnsw::bnsw<float, L2Distance, bnsw::AdSampling> bnsw_instance(
-      dim, 24, 500, ef_search_value);
+      dim, 16, 500, ef_search_value);
   // auto build_start = std::chrono::high_resolution_clock::now();
   // spdlog::info("Building BNSW index...");
   // for (int i = 0; i < num_vectors; ++i) {
@@ -65,9 +64,37 @@ int main(int argc, char *argv[]) {
   // spdlog::info("BNSW index built in {} seconds, avg {} ms",
   //              build_duration.count(),
   //              build_duration.count() / num_vectors * 1000);
-  std::filesystem::path save_path =
-      root_path / "dataset/gist/bnsw_nonsampling_index.bin";
-  bnsw_instance.loadIndex(save_path.string());
+  // std::filesystem::path save_path =
+  //     root_path / "dataset/gist/bnsw_sampling_index.bin";
+  std::filesystem::path hnswlib_path =
+    "/Users/tangdonghai/projects/ADSampling/data/gist/Ogist_ef500_M16.index";
+  bnsw_instance.loadhnswlibIndex(hnswlib_path.string());
+
+  // read orthogonal matrix
+  std::filesystem::path orthogonal_matrix_path =
+    "/Users/tangdonghai/projects/ADSampling/data/gist/O.fvecs";
+  std::ifstream orthogonal_matrix_file(orthogonal_matrix_path, std::ios::binary);
+  if (!orthogonal_matrix_file) {
+    spdlog::error("Error opening file: {}", orthogonal_matrix_path.string());
+    return 1;
+  }
+  // Read the number of vectors and their dimension
+  Eigen::MatrixXf orthogonal_matrix(dim, dim);  
+  char* inner_data = new char[dim * dim * sizeof(float)];
+  for (int i = 0; i < dim; i++) {
+    orthogonal_matrix_file.seekg(4, std::ios::cur);
+    orthogonal_matrix_file.read(inner_data + i * dim * sizeof(float), dim * sizeof(float));
+  }
+  orthogonal_matrix_file.close();
+  
+  orthogonal_matrix = Eigen::Map<Eigen::MatrixXf>(reinterpret_cast<float*>(inner_data), dim, dim);
+  orthogonal_matrix.transposeInPlace();
+  for(int i = 0; i < 10; i++) {
+    for (int j = 0; j < 10; j++) {
+      spdlog::info("orthogonal_matrix[{}, {}] = {}", i, j, orthogonal_matrix(i, j));
+    }
+  }
+  bnsw_instance.setOrthogonalMatrix(orthogonal_matrix);
 
   // read gist1m query
   std::filesystem::path gist1m_query_path =
@@ -83,6 +110,7 @@ int main(int argc, char *argv[]) {
   gist1m_query_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
   num_query_vectors =
       std::filesystem::file_size(gist1m_query_path) / (dim * sizeof(float));
+  num_query_vectors = 1;
   // Read the vectors
   std::vector<std::vector<float>> query_vectors(num_query_vectors,
                                                 std::vector<float>(dim));
@@ -153,4 +181,6 @@ int main(int argc, char *argv[]) {
       static_cast<double>(total_recall) / (num_query_vectors * k);
   spdlog::info("Recall rate: {:.2f}%", recall_rate * 100);
   spdlog::info("early stop: {}", bnsw_instance.getEarlyStopCount());
+  spdlog::info("distance calc count: {}",
+               bnsw_instance.getDistanceCalcCount());
 }

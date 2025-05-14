@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 template <typename T>
 T L2SqrDistanceNaive(const T *a, const T *b, std::size_t dim) {
@@ -90,12 +91,21 @@ public:
   }
 
   T distance(const T *a, const T *b, std::size_t dim) const {
+    distance_calc_count += dim;
     return distance_function(a, b, dim);
   }
 
+  uint64_t get_distance_calc_count() const {
+    return distance_calc_count;
+  }
+
 private:
+  static uint64_t distance_calc_count;
   static DistFunc distance_function;
 };
 
 template <typename T>
 typename L2Distance<T>::DistFunc L2Distance<T>::distance_function = nullptr;
+
+template <typename T>
+uint64_t L2Distance<T>::distance_calc_count = 0U;

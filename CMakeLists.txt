@@ -40,54 +40,54 @@ target_include_directories(all_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
 target_compile_options(all_tests PRIVATE -Wall -Wextra -Wpedantic -Werror ${ARCH_FLAGS} -g)
 
 add_executable(utils_test test/utils_test.cpp)
-target_link_libraries(utils_test Catch2::Catch2WithMain Eigen3::Eigen)
+target_link_libraries(utils_test Catch2::Catch2WithMain Eigen3::Eigen spdlog::spdlog fmt::fmt)
 target_include_directories(utils_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(utils_test PRIVATE -Wall -Wextra -Wpedantic -Werror ${ARCH_FLAGS}  -g)
 
 add_executable(l2_distance_test test/dist_alg/l2_distance_test.cpp)
-target_link_libraries(l2_distance_test Catch2::Catch2WithMain Eigen3::Eigen)
+target_link_libraries(l2_distance_test Catch2::Catch2WithMain Eigen3::Eigen spdlog::spdlog fmt::fmt)
 target_include_directories(l2_distance_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(l2_distance_test PRIVATE -Wall -Wextra -Wpedantic -Werror ${ARCH_FLAGS} -g)
 
 add_executable(adsampling_test test/adsampling_test.cpp)
-target_link_libraries(adsampling_test Catch2::Catch2WithMain Eigen3::Eigen)
+target_link_libraries(adsampling_test Catch2::Catch2WithMain Eigen3::Eigen spdlog::spdlog fmt::fmt)
 target_include_directories(adsampling_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(adsampling_test PRIVATE -Wall -Wextra -Wpedantic -Werror ${ARCH_FLAGS} -g)
 
 add_executable(bnsw_test test/bnsw_test.cpp)
-target_link_libraries(bnsw_test Catch2::Catch2WithMain Eigen3::Eigen)
+target_link_libraries(bnsw_test Catch2::Catch2WithMain Eigen3::Eigen spdlog::spdlog fmt::fmt)
 target_include_directories(bnsw_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_options(bnsw_test PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O0)
+target_compile_options(bnsw_test PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O3)
 
 
 
 add_executable(sift1m demo/sift1m.cpp)
-target_link_libraries(sift1m Eigen3::Eigen spdlog::spdlog)
+target_link_libraries(sift1m Eigen3::Eigen spdlog::spdlog fmt::fmt)
 target_include_directories(sift1m PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(sift1m PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O3)
 
 add_executable(adsampling_bench benchmark/adsampling_bench.cpp)
-target_link_libraries(adsampling_bench Catch2::Catch2WithMain Eigen3::Eigen spdlog::spdlog)
+target_link_libraries(adsampling_bench Catch2::Catch2WithMain Eigen3::Eigen spdlog::spdlog fmt::fmt)
 target_include_directories(adsampling_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(adsampling_bench PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O2)
 
 add_executable(gist1m demo/gist1m.cpp)
-target_link_libraries(gist1m Eigen3::Eigen spdlog::spdlog)
+target_link_libraries(gist1m Eigen3::Eigen spdlog::spdlog fmt::fmt)
 target_include_directories(gist1m PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(gist1m PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O3)
 
 add_executable(gist1m-nonsampling demo/gist1m-nonsampling.cpp)
-target_link_libraries(gist1m-nonsampling Eigen3::Eigen spdlog::spdlog)
+target_link_libraries(gist1m-nonsampling Eigen3::Eigen spdlog::spdlog fmt::fmt)
 target_include_directories(gist1m-nonsampling PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(gist1m-nonsampling PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O3)
 
 add_executable(hnswlib_sift1m demo/hnswlib-sift1m.cpp)
-target_link_libraries(hnswlib_sift1m Eigen3::Eigen spdlog::spdlog)
+target_link_libraries(hnswlib_sift1m Eigen3::Eigen spdlog::spdlog fmt::fmt)
 target_include_directories(hnswlib_sift1m PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/third_party/hnswlib)
 target_compile_options(hnswlib_sift1m PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O3)
 
 
 add_executable(hnswlib_gist1m demo/hnswlib-gist1m.cpp)
-target_link_libraries(hnswlib_gist1m Eigen3::Eigen spdlog::spdlog)
+target_link_libraries(hnswlib_gist1m Eigen3::Eigen spdlog::spdlog fmt::fmt)
 target_include_directories(hnswlib_gist1m PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/third_party/hnswlib)
 target_compile_options(hnswlib_gist1m PRIVATE -Wall -Wextra -Wpedantic ${ARCH_FLAGS} -g -O3)

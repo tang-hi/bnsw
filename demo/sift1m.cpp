@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <unordered_set>
 int main() {
 
   // read sift1m

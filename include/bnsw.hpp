@@ -3,6 +3,8 @@
 #include "adsampling.hpp"
 #include "utils.hpp"
 #include <Eigen/src/Core/Matrix.h>
+#include <iostream>
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -15,7 +17,6 @@
 #include <stdexcept>
 #include <type_traits>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace bnsw {
@@ -112,6 +113,15 @@ public:
 
   ~bnsw() = default;
 
+  uint64_t getDistanceCalcCount() const {
+    return dist_algo_.get_distance_calc_count();
+  }
+
+  void setOrthogonalMatrix(const Eigen::MatrixXf &matrix) {
+    orthogonal_matrix_ = matrix;
+    sampler_.set_orthogonal_matrix(&orthogonal_matrix_);
+  }
+
   bool addPoint(const void *point, label_t label, int level) {
     const T *point_data = static_cast<const T *>(point);
     if constexpr (need_convert) {
@@ -151,13 +161,14 @@ public:
 
     id_t nearest_node = current_entry_point;
     for (int level = current_max_level; level > current_level; --level) {
-      nearest_node = searchLayer(point_data, nearest_node, level, 1).top().id;
+      nearest_node =
+          searchLayer(point_data, nearest_node, level, 1, true).top().id;
     }
 
     for (int level = std::min(current_level, current_max_level); level >= 0;
          --level) {
       auto neighbors_min_heap =
-          searchLayer(point_data, nearest_node, level, ef_construction_);
+          searchLayer(point_data, nearest_node, level, ef_construction_, true);
       size_t M_level = (level == 0) ? M_max0_ : M_max_;
       nearest_node = selectAndConnectNeighbors(current_id, neighbors_min_heap,
                                                M_level, level);
@@ -179,9 +190,15 @@ public:
   int getEarlyStopCount() const { return sampler_.get_early_stop_count(); }
   auto search(const void *query, std::size_t k) const -> std::vector<label_t> {
     const T *query_typed = static_cast<const T *>(query);
-    // if constexpr (need_convert) {
-    //   sampler_.convert(query_typed);
-    // }
+    if constexpr (need_convert) {
+      spdlog::info("Converting query point for search");
+      sampler_.convert(query_typed);
+
+      for (int i = 0; i < 10; i++) {
+        const float* query_data = static_cast<const float*>(query_typed);
+        std::cout << "Query data[" << i << "] = " << query_data[i] << std::endl;
+      }
+    }
     id_t current_entry_point = entry_point_;
     int current_max_level = max_level_;
 
@@ -214,7 +231,7 @@ public:
     }
 
     auto top_candidates_min_heap =
-        searchLayer(query_typed, nearest_node, 0, ef_search_);
+        searchLayer(query_typed, nearest_node, 0, ef_search_, false);
     std::vector<label_t> results;
     results.reserve(k);
 
@@ -291,6 +308,119 @@ public:
     ofs.write(reinterpret_cast<const char *>(orthogonal_matrix_.data()),
               orthogonal_matrix_size * sizeof(float));
     ofs.close();
+  }
+
+  void loadhnswlibIndex(const std::string &location) {
+    std::ifstream ifs(location, std::ios::binary);
+    if (!ifs) {
+      throw std::runtime_error("Failed to open file for reading");
+    }
+    size_t offsetLevel0_;
+    size_t max_elements_;
+    size_t cur_element_count;
+    size_t size_data_per_element_;
+    size_t size_links_per_element_;
+    // size_t size_links_level0_;
+
+    size_t M_;
+    size_t maxM_;
+    size_t maxM0_;
+    size_t ef_construction_;
+    size_t label_offset_;
+    size_t offsetData_;
+    int maxlevel_;
+    ifs.read(reinterpret_cast<char *>(&offsetLevel0_), sizeof(offsetLevel0_));
+    ifs.read(reinterpret_cast<char *>(&max_elements_), sizeof(max_elements_));
+    ifs.read(reinterpret_cast<char *>(&cur_element_count),
+             sizeof(cur_element_count));
+    element_count_ = cur_element_count;
+    nodes_.reserve(element_count_);
+    ifs.read(reinterpret_cast<char *>(&size_data_per_element_),
+             sizeof(size_data_per_element_));
+    ifs.read(reinterpret_cast<char *>(&label_offset_), sizeof(label_offset_));
+    ifs.read(reinterpret_cast<char *>(&offsetData_), sizeof(offsetData_));
+    ifs.read(reinterpret_cast<char *>(&maxlevel_), sizeof(maxlevel_));
+    ifs.read(reinterpret_cast<char *>(&entry_point_), sizeof(entry_point_));
+    ifs.read(reinterpret_cast<char *>(&maxM_), sizeof(maxM_));
+    ifs.read(reinterpret_cast<char *>(&maxM0_), sizeof(maxM0_));
+    ifs.read(reinterpret_cast<char *>(&M_), sizeof(M_));
+    ifs.read(reinterpret_cast<char *>(&mult_), sizeof(mult_));
+    ifs.read(reinterpret_cast<char *>(&ef_construction_),
+             sizeof(ef_construction_));
+    char *data_level0_memory_ =
+        new char[max_elements_ * size_data_per_element_];
+    ifs.read(data_level0_memory_, cur_element_count * size_data_per_element_);
+
+    size_links_per_element_ = maxM_ * sizeof(id_t) + sizeof(unsigned int);
+    // size_links_level0_ = maxM0_ * sizeof(id_t) + sizeof(unsigned int);
+    auto linkLists = (char **)malloc(sizeof(void *) * max_elements_);
+
+    auto getExternalLabel = [&](size_t i) {
+      return *(reinterpret_cast<label_t *>(
+          data_level0_memory_ + i * size_data_per_element_ + label_offset_));
+    };
+
+    auto getDataByInternalId = [&](id_t id) {
+      return reinterpret_cast<const T *>(
+          data_level0_memory_ + id * size_data_per_element_ + offsetData_);
+    };
+
+    auto getLinkList0 = [&](id_t id) -> unsigned int * {
+      return reinterpret_cast<unsigned int *>(
+          data_level0_memory_ + id * size_data_per_element_ + offsetLevel0_);
+    };
+
+    auto getLinkList = [&](id_t id, int level) -> unsigned int * {
+      return reinterpret_cast<unsigned int *>(
+          linkLists[id] + size_links_per_element_ * (level - 1));
+    };
+
+    auto getListCount = [&](unsigned int *link_list) -> unsigned short int {
+      return *reinterpret_cast<unsigned short int *>(link_list);
+    };
+
+
+    for (size_t i = 0; i < cur_element_count; i++) {
+      id_to_label_[static_cast<id_t>(i)] = getExternalLabel(i);
+      label_to_id_[getExternalLabel(i)] = static_cast<id_t>(i);
+      id_to_data_[static_cast<id_t>(i)] = getDataByInternalId(i);
+      unsigned int linkListSize;
+      ifs.read(reinterpret_cast<char *>(&linkListSize), sizeof(linkListSize));
+      if (linkListSize == 0) {
+        InternalNode node(0, getDataByInternalId(static_cast<id_t>(i)), maxM_,
+                          maxM0_);
+        nodes_.push_back(node);
+      } else {
+        int level = linkListSize / size_links_per_element_;
+        InternalNode node(level, getDataByInternalId(static_cast<id_t>(i)),
+                          maxM_, maxM0_);
+        linkLists[static_cast<id_t>(i)] = new char[linkListSize];
+        ifs.read(linkLists[static_cast<id_t>(i)], linkListSize);
+        nodes_.push_back(node);
+      }
+    }
+
+    for (size_t i = 0; i < cur_element_count; i++) {
+      int level = nodes_[i].level;
+      for (int l = 0; l <= level; ++l) {
+        unsigned int *link_list = (l == 0) ? getLinkList0(static_cast<id_t>(i))
+                                           : getLinkList(static_cast<id_t>(i), l);
+        if (link_list) {
+          int count = getListCount(link_list);
+          if (count > 0) {
+            id_t *neighbors = reinterpret_cast<id_t *>(link_list + 1);
+            nodes_[i].connections[l].reserve(count);
+            for (int j = 0; j < count; ++j) {
+              id_t neighbor_id = neighbors[j];
+              if (neighbor_id >= max_elements_) {
+                throw std::runtime_error("Invalid neighbor ID");
+              }
+              nodes_[i].connections[l].push_back(neighbor_id);
+            }
+          }
+        }
+      }
+    }
   }
 
   void loadIndex(const std::string &location) {
@@ -520,7 +650,8 @@ private:
   }
 
   std::priority_queue<Neighbor, std::vector<Neighbor>, std::greater<Neighbor>>
-  searchLayer(const T *query, id_t entry_point_id, int level, size_t ef) const {
+  searchLayer(const T *query, id_t entry_point_id, int level, size_t ef,
+              bool in_build = true) const {
     std::priority_queue<Neighbor, std::vector<Neighbor>, std::greater<Neighbor>>
         candidates_min_heap;
     std::priority_queue<Neighbor> results_max_heap;
@@ -556,19 +687,31 @@ private:
       for (id_t neighbor_id : neighbors) {
         if (visited[neighbor_id] == 0) {
           visited[neighbor_id] = 1;
-          if (results_max_heap.size() < ef) {
+          if (in_build) {
             float dist = getDistance(query, neighbor_id);
-            candidates_min_heap.emplace(neighbor_id, dist);
-            results_max_heap.emplace(neighbor_id, dist);
-            lower_bound = results_max_heap.top().distance;
-          } else if (float dist = 0.0; !sampler_.above_threshold(
-                         query, nodes_[neighbor_id].point_data, lower_bound,
-                         dist)) {
-            candidates_min_heap.emplace(neighbor_id, dist);
-            results_max_heap.emplace(neighbor_id, dist);
-            lower_bound = results_max_heap.top().distance;
-            if (results_max_heap.size() > ef) {
-              results_max_heap.pop();
+            if (results_max_heap.size() < ef ||
+                dist < results_max_heap.top().distance) {
+              candidates_min_heap.emplace(neighbor_id, dist);
+              results_max_heap.emplace(neighbor_id, dist);
+              if (results_max_heap.size() > ef) {
+                results_max_heap.pop();
+              }
+            }
+          } else {
+            if (results_max_heap.size() < ef) {
+              float dist = getDistance(query, neighbor_id);
+              candidates_min_heap.emplace(neighbor_id, dist);
+              results_max_heap.emplace(neighbor_id, dist);
+              lower_bound = results_max_heap.top().distance;
+            } else if (float dist = 0.0; !sampler_.above_threshold(
+                           query, nodes_[neighbor_id].point_data, lower_bound,
+                           dist)) {
+              candidates_min_heap.emplace(neighbor_id, dist);
+              results_max_heap.emplace(neighbor_id, dist);
+              lower_bound = results_max_heap.top().distance;
+              if (results_max_heap.size() > ef) {
+                results_max_heap.pop();
+              }
             }
           }
         }
