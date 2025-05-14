@@ -2,14 +2,20 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 
 template <typename T>
 T L2SqrDistanceNaive(const T *a, const T *b, std::size_t dim) {
   T sum = 0;
   for (std::size_t i = 0; i < dim; ++i) {
+    // std::cout << "query[" << i << "] = " << a[i] << std::endl;
+    // std::cout << "V[" << i << "] = " << b[i] << std::endl;
     T diff = a[i] - b[i];
+    // std::cout << "diff[" << i << "] = " << diff << std::endl;
     sum += diff * diff;
+    // std::cout << "sum[" << i << "] = " << sum << std::endl;
   }
+  // std::cout << "dim = " << dim  << " sum = " << sum << std::endl;
   return sum;
 }
 
@@ -85,6 +91,7 @@ public:
     distance_function = L2SqrDistanceNeon<T>;
 #elif defined(__x86_64__)
     distance_function = L2SqrDistanceAVX2<T>;
+    // distance_function = L2SqrDistanceNaive<T>;
 #else
     distance_function = L2SqrDistanceNaive<T>;
 #endif

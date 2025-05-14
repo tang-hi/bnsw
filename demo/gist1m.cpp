@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
   }
 
   // read gist1m
-  std::filesystem::path root_path = "/Users/tangdonghai/projects/bnsw";
+  std::filesystem::path root_path = "/home/hayes/projects/bnsw";
   std::filesystem::path gist1m_path =
       root_path / "dataset/gist/gist_base.fvecs";
   std::ifstream gist1m_file(gist1m_path, std::ios::binary);
@@ -67,12 +67,12 @@ int main(int argc, char *argv[]) {
   // std::filesystem::path save_path =
   //     root_path / "dataset/gist/bnsw_sampling_index.bin";
   std::filesystem::path hnswlib_path =
-    "/Users/tangdonghai/projects/ADSampling/data/gist/Ogist_ef500_M16.index";
+    "/home/hayes/repo/ADSampling/data/gist/Ogist_ef500_M16.index";
   bnsw_instance.loadhnswlibIndex(hnswlib_path.string());
 
   // read orthogonal matrix
   std::filesystem::path orthogonal_matrix_path =
-    "/Users/tangdonghai/projects/ADSampling/data/gist/O.fvecs";
+    "/home/hayes/repo/ADSampling/data/gist/O.fvecs";
   std::ifstream orthogonal_matrix_file(orthogonal_matrix_path, std::ios::binary);
   if (!orthogonal_matrix_file) {
     spdlog::error("Error opening file: {}", orthogonal_matrix_path.string());
@@ -88,12 +88,6 @@ int main(int argc, char *argv[]) {
   orthogonal_matrix_file.close();
   
   orthogonal_matrix = Eigen::Map<Eigen::MatrixXf>(reinterpret_cast<float*>(inner_data), dim, dim);
-  orthogonal_matrix.transposeInPlace();
-  for(int i = 0; i < 10; i++) {
-    for (int j = 0; j < 10; j++) {
-      spdlog::info("orthogonal_matrix[{}, {}] = {}", i, j, orthogonal_matrix(i, j));
-    }
-  }
   bnsw_instance.setOrthogonalMatrix(orthogonal_matrix);
 
   // read gist1m query
@@ -110,7 +104,6 @@ int main(int argc, char *argv[]) {
   gist1m_query_file.read(reinterpret_cast<char *>(&dim), sizeof(int));
   num_query_vectors =
       std::filesystem::file_size(gist1m_query_path) / (dim * sizeof(float));
-  num_query_vectors = 1;
   // Read the vectors
   std::vector<std::vector<float>> query_vectors(num_query_vectors,
                                                 std::vector<float>(dim));
@@ -135,9 +128,10 @@ int main(int argc, char *argv[]) {
   }
   auto search_end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> search_duration = search_end - search_start;
-  spdlog::info("BNSW search completed in {} seconds, avg {} ms",
+  spdlog::info("BNSW search completed in {} seconds, avg {} ms, avg dim calculate {} ns",
                search_duration.count(),
-               search_duration.count() / num_query_vectors * 1000);
+               search_duration.count() / num_query_vectors * 1000,
+               search_duration.count() / bnsw_instance.getDistanceCalcCount() * 1000 * 1000 * 1000);
 
   // Read the ground truth
   std::filesystem::path gist1m_gt_path =

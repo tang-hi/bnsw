@@ -191,13 +191,8 @@ public:
   auto search(const void *query, std::size_t k) const -> std::vector<label_t> {
     const T *query_typed = static_cast<const T *>(query);
     if constexpr (need_convert) {
-      spdlog::info("Converting query point for search");
-      sampler_.convert(query_typed);
-
-      for (int i = 0; i < 10; i++) {
-        const float* query_data = static_cast<const float*>(query_typed);
-        std::cout << "Query data[" << i << "] = " << query_data[i] << std::endl;
-      }
+      // spdlog::info("Converting query point for search");
+      query_typed = sampler_.convert(query_typed);
     }
     id_t current_entry_point = entry_point_;
     int current_max_level = max_level_;
@@ -208,6 +203,15 @@ public:
 
     id_t nearest_node = current_entry_point;
     float min_distance = getDistance(query_typed, nearest_node);
+    // const float* ep_data = id_to_data_.at(current_entry_point);
+    // if (!ep_data) {
+    //   throw std::runtime_error("Invalid data pointer encountered");
+    // }
+    // for(int i = 0; i < 960; i++) {
+      // std::cout << "Entry point data[" << i << "] = " << ep_data[i] << std::endl;
+    // }
+    // spdlog::info("Initial nearest node: {}, distance: {}", nearest_node,
+    //             min_distance);
     for (int level = current_max_level; level > 0; --level) {
       bool changed = true;
       while (changed) {

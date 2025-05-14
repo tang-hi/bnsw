@@ -15,7 +15,7 @@ int main(int argc, char *argv[]) {
   }
 
   // read gist1m
-  std::filesystem::path root_path = "/Users/tangdonghai/projects/bnsw";
+  std::filesystem::path root_path = "/home/hayes/projects/bnsw";
   std::filesystem::path gist1m_path =
       root_path / "dataset/gist/gist_base.fvecs";
   std::ifstream gist1m_file(gist1m_path, std::ios::binary);
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
   //     root_path / "dataset/gist/bnsw_nonsampling_index.bin";
 
   std::filesystem::path hnswlib_path = 
-    "/Users/tangdonghai/projects/ADSampling/data/gist/gist_ef500_M16.index";
+    "/home/hayes/repo/ADSampling/data/gist/gist_ef500_M16.index";
   bnsw_instance.loadhnswlibIndex(hnswlib_path.string());
   spdlog::info("BNSW index loaded from {}", hnswlib_path.string());
   // read gist1m query
@@ -104,9 +104,10 @@ int main(int argc, char *argv[]) {
   }
   auto search_end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> search_duration = search_end - search_start;
-  spdlog::info("BNSW search completed in {} seconds, avg {} ms",
+  spdlog::info("BNSW search completed in {} seconds, avg {} ms, dim calculate {} ns",
                search_duration.count(),
-               search_duration.count() / num_query_vectors * 1000);
+               search_duration.count() / num_query_vectors * 1000,
+               search_duration.count() / bnsw_instance.getDistanceCalcCount() * 1000 * 1000 * 1000);
 
   // Read the ground truth
   std::filesystem::path gist1m_gt_path =
