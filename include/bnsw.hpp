@@ -3,17 +3,17 @@
 #include "adsampling.hpp"
 #include "utils.hpp"
 #include <Eigen/src/Core/Matrix.h>
-#include <iostream>
-#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <iostream>
 #include <limits>
 #include <queue>
 #include <random>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <type_traits>
 #include <unordered_map>
@@ -203,15 +203,6 @@ public:
 
     id_t nearest_node = current_entry_point;
     float min_distance = getDistance(query_typed, nearest_node);
-    // const float* ep_data = id_to_data_.at(current_entry_point);
-    // if (!ep_data) {
-    //   throw std::runtime_error("Invalid data pointer encountered");
-    // }
-    // for(int i = 0; i < 960; i++) {
-      // std::cout << "Entry point data[" << i << "] = " << ep_data[i] << std::endl;
-    // }
-    // spdlog::info("Initial nearest node: {}, distance: {}", nearest_node,
-    //             min_distance);
     for (int level = current_max_level; level > 0; --level) {
       bool changed = true;
       while (changed) {
@@ -233,9 +224,15 @@ public:
         }
       }
     }
-
-    auto top_candidates_min_heap =
-        searchLayer(query_typed, nearest_node, 0, ef_search_, false);
+    std::priority_queue<Neighbor, std::vector<Neighbor>, std::greater<Neighbor>>
+        top_candidates_min_heap;
+    if constexpr (need_convert) {
+      top_candidates_min_heap = searchLayerBySampling(
+          query_typed, nearest_node, 0, ef_search_, k, false);
+    } else {
+      top_candidates_min_heap =
+          searchLayer(query_typed, nearest_node, 0, ef_search_, false);
+    }
     std::vector<label_t> results;
     results.reserve(k);
 
@@ -383,7 +380,6 @@ public:
       return *reinterpret_cast<unsigned short int *>(link_list);
     };
 
-
     for (size_t i = 0; i < cur_element_count; i++) {
       id_to_label_[static_cast<id_t>(i)] = getExternalLabel(i);
       label_to_id_[getExternalLabel(i)] = static_cast<id_t>(i);
@@ -407,8 +403,9 @@ public:
     for (size_t i = 0; i < cur_element_count; i++) {
       int level = nodes_[i].level;
       for (int l = 0; l <= level; ++l) {
-        unsigned int *link_list = (l == 0) ? getLinkList0(static_cast<id_t>(i))
-                                           : getLinkList(static_cast<id_t>(i), l);
+        unsigned int *link_list = (l == 0)
+                                      ? getLinkList0(static_cast<id_t>(i))
+                                      : getLinkList(static_cast<id_t>(i), l);
         if (link_list) {
           int count = getListCount(link_list);
           if (count > 0) {
@@ -651,6 +648,108 @@ private:
     }
 
     return nearst_node;
+  }
+
+  std::priority_queue<Neighbor, std::vector<Neighbor>, std::greater<Neighbor>>
+  searchLayerBySampling(const T *query, id_t entry_point_id, int level,
+                        size_t ef, uint32_t k, bool in_build = true) const {
+    std::priority_queue<Neighbor> results_max_heap;
+
+    std::priority_queue<Neighbor> top_candidates;
+
+    std::priority_queue<Neighbor, std::vector<Neighbor>, std::greater<Neighbor>>
+        candidates;
+
+    visited.resize(nodes_.size(), 0);
+
+    if (entry_point_id == INVALID_ID || entry_point_id >= nodes_.size()) {
+      return candidates;
+    }
+    if (nodes_[entry_point_id].level < level) {
+      return candidates;
+    }
+
+    float entry_dist = getDistance(query, entry_point_id);
+    results_max_heap.emplace(entry_point_id, entry_dist);
+    candidates.emplace(entry_point_id, entry_dist);
+    top_candidates.emplace(entry_point_id, entry_dist);
+    visited[entry_point_id] = 1;
+
+    while (!candidates.empty()) {
+      auto current_best_candidate = candidates.top();
+      candidates.pop();
+
+      if (!results_max_heap.empty() &&
+          current_best_candidate.distance > top_candidates.top().distance &&
+          top_candidates.size() >= ef) {
+        break;
+      }
+
+      const auto &neighbors =
+          nodes_[current_best_candidate.id].connections[level];
+      float lower_bound = results_max_heap.top().distance;
+
+      for (id_t neighbor_id : neighbors) {
+        if (visited[neighbor_id] == 0) {
+          visited[neighbor_id] = 1;
+          if (in_build) {
+            float dist = getDistance(query, neighbor_id);
+            if (results_max_heap.size() < ef ||
+                dist < results_max_heap.top().distance) {
+              candidates.emplace(neighbor_id, dist);
+              results_max_heap.emplace(neighbor_id, dist);
+              if (results_max_heap.size() > ef) {
+                results_max_heap.pop();
+              }
+            }
+          } else {
+            if (results_max_heap.size() < k) {
+              float dist = getDistance(query, neighbor_id);
+              candidates.emplace(neighbor_id, dist);
+              results_max_heap.emplace(neighbor_id, dist);
+              top_candidates.emplace(neighbor_id, dist);
+              lower_bound = results_max_heap.top().distance;
+            } else if (float dist = 0.0; !sampler_.above_threshold(
+                           query, nodes_[neighbor_id].point_data, lower_bound,
+                           dist)) {
+              candidates.emplace(neighbor_id, dist);
+              results_max_heap.emplace(neighbor_id, dist);
+              top_candidates.emplace(neighbor_id, dist);
+              if (results_max_heap.size() > k) {
+                results_max_heap.pop();
+              }
+              if (top_candidates.size() > ef) {
+                top_candidates.pop();
+              }
+              lower_bound = results_max_heap.top().distance;
+            } else {
+              // if the distance is not above the threshold, we can add it to
+              // the candidates
+              float lower_bound_candidate = top_candidates.top().distance;
+              if (top_candidates.size() < ef || dist < lower_bound_candidate) {
+                candidates.emplace(neighbor_id, dist);
+                top_candidates.emplace(neighbor_id, dist);
+                if (top_candidates.size() > ef) {
+                  top_candidates.pop();
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    std::priority_queue<Neighbor, std::vector<Neighbor>, std::greater<Neighbor>>
+        final_results_min_heap;
+    while (!results_max_heap.empty()) {
+      final_results_min_heap.push(results_max_heap.top());
+      results_max_heap.pop();
+    }
+    visited.clear();
+    visited.resize(nodes_.size(), 0);
+
+    return final_results_min_heap;
+
   }
 
   std::priority_queue<Neighbor, std::vector<Neighbor>, std::greater<Neighbor>>
